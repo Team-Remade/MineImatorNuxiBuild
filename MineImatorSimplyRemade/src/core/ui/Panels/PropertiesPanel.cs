@@ -116,6 +116,7 @@ public partial class PropertiesPanel : UiPanel
     public float NuxTResolutionScale = 0.5f;
     public float NuxTExposure = 1f;
     public int NuxTSeed = 1;
+    public bool NuxTDenoiserEnabled;
     public bool AmbientOcclusionEnabled = true;
     public float AmbientOcclusionRadius = 12f;
     public float AmbientOcclusionStrength = 1f;
@@ -428,6 +429,7 @@ public partial class PropertiesPanel : UiPanel
         NuxTResolutionScale = float.IsFinite(settings.NuxTResolutionScale) ? Math.Clamp(settings.NuxTResolutionScale, 0.1f, 1f) : 0.5f;
         NuxTExposure = float.IsFinite(settings.NuxTExposure) ? Math.Clamp(settings.NuxTExposure, 0.05f, 8f) : 1f;
         NuxTSeed = settings.NuxTSeed;
+        NuxTDenoiserEnabled = settings.NuxTDenoiserEnabled;
         AmbientOcclusionEnabled = settings.AmbientOcclusionEnabled;
         AmbientOcclusionRadius = Math.Clamp(settings.AmbientOcclusionRadius, 0f, 128f);
         AmbientOcclusionStrength = Math.Clamp(settings.AmbientOcclusionStrength, 0f, 2f);
@@ -608,6 +610,7 @@ public partial class PropertiesPanel : UiPanel
         manifest.Settings.NuxTResolutionScale = float.IsFinite(NuxTResolutionScale) ? Math.Clamp(NuxTResolutionScale, 0.1f, 1f) : 0.5f;
         manifest.Settings.NuxTExposure = float.IsFinite(NuxTExposure) ? Math.Clamp(NuxTExposure, 0.05f, 8f) : 1f;
         manifest.Settings.NuxTSeed = NuxTSeed;
+        manifest.Settings.NuxTDenoiserEnabled = NuxTDenoiserEnabled;
         manifest.Settings.AmbientOcclusionEnabled = AmbientOcclusionEnabled;
         manifest.Settings.AmbientOcclusionRadius = Math.Clamp(AmbientOcclusionRadius, 0f, 128f);
         manifest.Settings.AmbientOcclusionStrength = Math.Clamp(AmbientOcclusionStrength, 0f, 2f);
@@ -3126,6 +3129,10 @@ public partial class PropertiesPanel : UiPanel
             RegisterProjectPropertyContext(nameof(NuxTExposure), 0.05f, 8f);
             changed |= ImGui.InputInt("Seed##nuxt", ref NuxTSeed);
             RegisterProjectPropertyContext(nameof(NuxTSeed));
+            changed |= ImGui.Checkbox("Denoiser (Intel Open Image Denoise)##nuxt", ref NuxTDenoiserEnabled);
+            RegisterProjectPropertyContext(nameof(NuxTDenoiserEnabled));
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Filters completed NuxT samples on the CPU; intermediate samples remain noisy.");
             ImGui.Separator();
         }
 

@@ -63,6 +63,7 @@ layout(binding = 14) uniform isampler2D uInstanceInfo;
 
 uniform int uWidth;
 uniform int uHeight;
+uniform ivec2 uTileOrigin;
 uniform int uSampleIndex;
 uniform int uSeed;
 uniform int uMaxBounces;
@@ -624,7 +625,7 @@ float LinearToSrgb(float value)
 
 void main()
 {
-    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy) + uTileOrigin;
     if (pixel.x >= uWidth || pixel.y >= uHeight)
         return;
 

@@ -16,9 +16,10 @@ internal static partial class Program
 {
     private static void RunNuxTTests()
     {
-        NuxTSettings normalized = new NuxTSettings(0, 40, float.NaN, float.PositiveInfinity, 7).Normalized();
+        NuxTSettings normalized = new NuxTSettings(0, 40, float.NaN, float.PositiveInfinity, 7, true).Normalized();
         NuxTAssert(normalized.Samples == 1 && normalized.MaxBounces == 16 &&
-                   normalized.ResolutionScale == 0.5f && normalized.Exposure == 1f && normalized.Seed == 7,
+                   normalized.ResolutionScale == 0.5f && normalized.Exposure == 1f && normalized.Seed == 7 &&
+                   normalized.DenoiserEnabled,
             "NuxT settings must clamp invalid and out-of-range values.");
 
         var animatedTexture = new NuxTTexture([255, 0, 0, 255, 0, 0, 255, 255], 1, 2);
@@ -96,14 +97,35 @@ internal static partial class Program
         settingsManifest.Settings.NuxTResolutionScale = 0.75f;
         settingsManifest.Settings.NuxTExposure = 2.25f;
         settingsManifest.Settings.NuxTSeed = 42;
+        settingsManifest.Settings.NuxTDenoiserEnabled = true;
         string settingsJson = JsonSerializer.Serialize(settingsManifest, AppJsonContext.Default.ProjectManifest);
         ProjectManifest restoredSettings = JsonSerializer.Deserialize(settingsJson, AppJsonContext.Default.ProjectManifest)!;
         var settingsPanel = new PropertiesPanel();
         settingsPanel.LoadProjectSettingsFromManifest(restoredSettings);
         NuxTAssert(settingsPanel.NuxTSamples == 128 && settingsPanel.NuxTMaxBounces == 7 &&
                    settingsPanel.NuxTResolutionScale == 0.75f && settingsPanel.NuxTExposure == 2.25f &&
-                   settingsPanel.NuxTSeed == 42,
+                   settingsPanel.NuxTSeed == 42 && settingsPanel.NuxTDenoiserEnabled,
             "NuxT render settings must survive project serialization and load into the render settings panel.");
+        var savedSettings = new ProjectManifest();
+        settingsPanel.WriteProjectSettingsToManifest(savedSettings);
+        NuxTAssert(savedSettings.Settings.NuxTDenoiserEnabled,
+            "The NuxT denoiser control must write its value back to project settings.");
+        NuxTAssert(!new ProjectManifest().Settings.NuxTDenoiserEnabled,
+            "Projects must leave NuxT denoising disabled unless the user enables it.");
+
+        const int denoiserTestWidth = 32;
+        const int denoiserTestHeight = 32;
+        var noisyLinearRgb = new float[denoiserTestWidth * denoiserTestHeight * 3];
+        var noiseSource = new Random(17);
+        for (int i = 0; i < noisyLinearRgb.Length; i++)
+            noisyLinearRgb[i] = 0.6f + ((float)noiseSource.NextDouble() - 0.5f) * 0.5f;
+        float[] originalNoisyLinearRgb = noisyLinearRgb.ToArray();
+        NuxTAssert(NuxTDenoiser.TryDenoiseLinearRgb(noisyLinearRgb, denoiserTestWidth, denoiserTestHeight,
+                out float[] denoisedLinearRgb, out string? denoiserError),
+            $"OIDN must execute its CPU RT filter: {denoiserError}");
+        NuxTAssert(noisyLinearRgb.SequenceEqual(originalNoisyLinearRgb) &&
+                   denoisedLinearRgb.Where((value, index) => MathF.Abs(value - noisyLinearRgb[index]) > 1e-5f).Any(),
+            "OIDN must produce a separate filtered HDR color image without modifying its input.");
 
         var empty = new NuxTScene([], new Vector3(0.2f, 0.4f, 0.6f));
         Vector3 background = empty.TraceRay(Vector3.Zero, -Vector3.UnitZ, 0);
@@ -226,6 +248,40 @@ internal static partial class Program
         NuxTAssert(finalRender.Samples == 4 && renderer.CompletedSamples == 4 &&
                    Enumerable.Range(0, 4).All(pixel => finalRender.Rgba[pixel * 4 + 3] == 0),
             "Final CPU rendering must wait for every requested sample and preserve a transparent environment.");
+
+        using var exportRenderer = new NuxTProgressiveRenderer();
+        const int exportSamples = 12;
+        exportRenderer.StartOrUpdate(empty, camera, 32, 24, new NuxTSettings(exportSamples, 0));
+        NuxTFrame? exportFrame = null;
+        int publishedExportSamples = 0;
+        deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (exportRenderer.TryTakeLatestFrame(out NuxTFrame frame))
+            {
+                NuxTAssert(frame.Samples >= publishedExportSamples,
+                    "Progressive export preview samples must never move backward.");
+                publishedExportSamples = frame.Samples;
+                exportFrame = frame;
+            }
+            if (exportRenderer.Status == "Complete")
+                break;
+            Thread.Sleep(2);
+        }
+        NuxTAssert(exportRenderer.Status == "Complete" && exportRenderer.CompletedSamples == exportSamples &&
+                   exportFrame is { Samples: exportSamples },
+            "An exported path-traced image must not be considered ready until its final sample is published.");
+
+        using var denoisedCpuRenderer = new NuxTProgressiveRenderer();
+        var coverageSettings = new NuxTSettings(4, 0, 1f, 1f, 123);
+        NuxTFrame rawCoverageFrame = denoisedCpuRenderer.RenderToCompletion(halfScene, camera, 32, 24,
+            coverageSettings, transparentBackground: true);
+        NuxTFrame denoisedCoverageFrame = denoisedCpuRenderer.RenderToCompletion(halfScene, camera, 32, 24,
+            coverageSettings with { DenoiserEnabled = true }, transparentBackground: true);
+        NuxTAssert(denoisedCpuRenderer.Status.Contains("Denoised", StringComparison.Ordinal) &&
+                   Enumerable.Range(0, 32 * 24).All(pixel =>
+                       rawCoverageFrame.Rgba[pixel * 4 + 3] == denoisedCoverageFrame.Rgba[pixel * 4 + 3]),
+            "Completed CPU output must run OIDN while preserving the original transparent coverage.");
 
         using var sceneBuilder = new NuxTSceneBuildCoordinator();
         using var entered = new ManualResetEventSlim();
@@ -658,6 +714,98 @@ internal static partial class Program
                 NuxTAssert(Math.Abs(actual[i] - expected[i]) <= 1,
                     $"GPU output must match CPU reference pixels (byte {i}: {actual[i]} vs {expected[i]}).");
 
+            const int tiledWidth = 513;
+            const int tiledHeight = 515;
+            var tiledSettings = new NuxTSettings(2, 0, 1f, 1f, 19);
+            using (var progressiveTiledRenderer = new NuxTComputeRenderer(gl))
+            using (var finalTiledRenderer = new NuxTComputeRenderer(gl))
+            {
+                NuxTAssert(progressiveTiledRenderer.Render(scene, camera, tiledWidth, tiledHeight, tiledSettings) &&
+                           progressiveTiledRenderer.Render(scene, camera, tiledWidth, tiledHeight, tiledSettings),
+                    "Progressive tracing must complete the odd-sized multi-tile reference image.");
+                NuxTAssert(finalTiledRenderer.Render(scene, camera, tiledWidth, tiledHeight, tiledSettings,
+                        completeImmediately: true) && finalTiledRenderer.CompletedSamples == tiledSettings.Samples,
+                    "Final tracing must complete all samples across odd-sized image tiles.");
+                byte[] progressivePixels = ReadGpuOutput(progressiveTiledRenderer.OutputTexture, tiledWidth, tiledHeight);
+                byte[] finalPixels = ReadGpuOutput(finalTiledRenderer.OutputTexture, tiledWidth, tiledHeight);
+                NuxTAssert(progressivePixels.SequenceEqual(finalPixels),
+                    "Tiled final GPU pixels must exactly match progressive tracing across tile boundaries.");
+            }
+
+            var readbackViewport = new Viewport { Gl = gl };
+            uint readbackTexture = 0;
+            uint readbackFramebuffer = 0;
+            uint pixelPackBuffer = 0;
+            try
+            {
+                byte[] sourcePixels =
+                [
+                    1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255,
+                    10, 11, 12, 255, 13, 14, 15, 255, 16, 17, 18, 255
+                ];
+                gl.GenTextures(1, out readbackTexture);
+                gl.BindTexture(Silk.NET.OpenGL.GLEnum.Texture2D, readbackTexture);
+                fixed (byte* pointer = sourcePixels)
+                    gl.TexImage2D(Silk.NET.OpenGL.GLEnum.Texture2D, 0,
+                        Silk.NET.OpenGL.InternalFormat.Rgba8, 3, 2, 0,
+                        Silk.NET.OpenGL.GLEnum.Rgba, Silk.NET.OpenGL.GLEnum.UnsignedByte, pointer);
+                gl.GenFramebuffers(1, out readbackFramebuffer);
+                gl.BindFramebuffer(Silk.NET.OpenGL.GLEnum.ReadFramebuffer, readbackFramebuffer);
+                gl.FramebufferTexture2D(Silk.NET.OpenGL.GLEnum.ReadFramebuffer,
+                    Silk.NET.OpenGL.GLEnum.ColorAttachment0, Silk.NET.OpenGL.GLEnum.Texture2D, readbackTexture, 0);
+                NuxTAssert(gl.CheckFramebufferStatus(Silk.NET.OpenGL.GLEnum.ReadFramebuffer) ==
+                           Silk.NET.OpenGL.GLEnum.FramebufferComplete,
+                    "The capture readback regression framebuffer must be complete.");
+
+                gl.GenBuffers(1, out pixelPackBuffer);
+                gl.BindBuffer(Silk.NET.OpenGL.GLEnum.PixelPackBuffer, pixelPackBuffer);
+                gl.BufferData(Silk.NET.OpenGL.GLEnum.PixelPackBuffer, 256, null, Silk.NET.OpenGL.GLEnum.StreamRead);
+                gl.PixelStore(Silk.NET.OpenGL.GLEnum.PackAlignment, 8);
+                gl.PixelStore(Silk.NET.OpenGL.GLEnum.PackRowLength, 5);
+                gl.PixelStore(Silk.NET.OpenGL.GLEnum.PackSkipPixels, 1);
+                gl.PixelStore(Silk.NET.OpenGL.GLEnum.PackSkipRows, 1);
+
+                object?[] readbackArguments = [readbackFramebuffer, 3u, 2u, false, null];
+                bool readbackSucceeded = (bool)typeof(Viewport).GetMethod("ReadFramebufferPixels",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(readbackViewport, readbackArguments)!;
+                byte[] capturedPixels = (byte[])readbackArguments[4]!;
+                byte[] expectedPixels =
+                [
+                    1, 2, 3, 4, 5, 6, 7, 8, 9,
+                    10, 11, 12, 13, 14, 15, 16, 17, 18
+                ];
+                NuxTAssert(readbackSucceeded && capturedPixels.SequenceEqual(expectedPixels),
+                    "Framebuffer capture must read tightly packed RGB bytes with a non-default pixel-pack state.");
+                readbackArguments[3] = true;
+                bool rgbaReadbackSucceeded = (bool)typeof(Viewport).GetMethod("ReadFramebufferPixels",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(readbackViewport, readbackArguments)!;
+                byte[] capturedRgbaPixels = (byte[])readbackArguments[4]!;
+                NuxTAssert(rgbaReadbackSucceeded && capturedRgbaPixels.SequenceEqual(sourcePixels),
+                    "Framebuffer capture must preserve tightly packed RGBA bytes with a non-default pixel-pack state.");
+                NuxTAssert(gl.GetInteger(Silk.NET.OpenGL.GLEnum.PixelPackBufferBinding) == (int)pixelPackBuffer &&
+                           gl.GetInteger(Silk.NET.OpenGL.GLEnum.PackAlignment) == 8 &&
+                           gl.GetInteger(Silk.NET.OpenGL.GLEnum.PackRowLength) == 5 &&
+                           gl.GetInteger(Silk.NET.OpenGL.GLEnum.PackSkipPixels) == 1 &&
+                           gl.GetInteger(Silk.NET.OpenGL.GLEnum.PackSkipRows) == 1 &&
+                           gl.GetInteger(Silk.NET.OpenGL.GLEnum.ReadFramebufferBinding) == (int)readbackFramebuffer,
+                    "Framebuffer capture must restore the previous read target and pixel-pack state.");
+            }
+            finally
+            {
+                gl.BindBuffer(Silk.NET.OpenGL.GLEnum.PixelPackBuffer, 0);
+                gl.PixelStore(Silk.NET.OpenGL.GLEnum.PackAlignment, 4);
+                gl.PixelStore(Silk.NET.OpenGL.GLEnum.PackRowLength, 0);
+                gl.PixelStore(Silk.NET.OpenGL.GLEnum.PackSkipPixels, 0);
+                gl.PixelStore(Silk.NET.OpenGL.GLEnum.PackSkipRows, 0);
+                gl.BindFramebuffer(Silk.NET.OpenGL.GLEnum.ReadFramebuffer, 0);
+                if (pixelPackBuffer != 0)
+                    gl.DeleteBuffer(pixelPackBuffer);
+                if (readbackFramebuffer != 0)
+                    gl.DeleteFramebuffer(readbackFramebuffer);
+                if (readbackTexture != 0)
+                    gl.DeleteTexture(readbackTexture);
+            }
+
             NuxTAssert(renderer.Render(scene, camera, width, height, settings) && renderer.CompletedSamples == 2,
                 "A second dispatch must accumulate without resetting the same request.");
             NuxTAssert(renderer.Render(scene, camera with { Position = new Vector3(0.01f, 0f, 1f) }, width, height, settings) &&
@@ -839,6 +987,30 @@ internal static partial class Program
                 NuxTAssert(Math.Abs(actual[i] - expected[i]) <= 1,
                     $"Paged large-scene GPU pixels must match the CPU reference (byte {i}: {actual[i]} vs {expected[i]}).");
             NuxTAssert(gl.GetError() == Silk.NET.OpenGL.GLEnum.NoError, "The NuxT compute regression must leave OpenGL error-free.");
+
+            var coverageTriangle = new NuxTTriangle(
+                new Vector3(-0.02f, -2f, 0f), new Vector3(2f, -2f, 0f), new Vector3(-0.02f, 2f, 0f),
+                Vector3.UnitZ, Vector3.UnitZ, Vector3.UnitZ,
+                Vector2.Zero, Vector2.UnitX, Vector2.UnitY,
+                new NuxTMaterial(Vector3.One, new Vector3(3f, 1f, 0f), Unlit: true));
+            var coverageScene = new NuxTScene([coverageTriangle], new Vector3(0.01f));
+            const int denoiserWidth = 32;
+            const int denoiserHeight = 24;
+            var rawDenoiserSettings = new NuxTSettings(1, 0, 1f, 1f, 73);
+            NuxTAssert(renderer.Render(coverageScene, camera, denoiserWidth, denoiserHeight,
+                    rawDenoiserSettings, transparentBackground: true, completeImmediately: true),
+                "The GPU denoiser comparison must render its raw reference frame.");
+            byte[] rawGpuCoverage = ReadGpuOutput(renderer.OutputTexture, denoiserWidth, denoiserHeight);
+            NuxTAssert(renderer.Render(coverageScene, camera, denoiserWidth, denoiserHeight,
+                    rawDenoiserSettings with { DenoiserEnabled = true },
+                    transparentBackground: true, completeImmediately: true) &&
+                       renderer.Status.Contains("Denoised", StringComparison.Ordinal),
+                $"Completed GPU output must execute OIDN: {renderer.Status}.");
+            byte[] denoisedGpuCoverage = ReadGpuOutput(renderer.OutputTexture, denoiserWidth, denoiserHeight);
+            NuxTAssert(Enumerable.Range(0, denoiserWidth * denoiserHeight).All(pixel =>
+                    rawGpuCoverage[pixel * 4 + 3] == denoisedGpuCoverage[pixel * 4 + 3]) &&
+                       gl.GetError() == Silk.NET.OpenGL.GLEnum.NoError,
+                "GPU denoising must preserve primary-ray coverage and leave OpenGL error-free.");
 
             byte[] ReadGpuOutput(uint outputTexture, int renderWidth, int renderHeight)
             {

@@ -142,6 +142,8 @@ public class MainWindow : Window
     private int _renderFrameTotal = 1;
     private int _renderJobWidth;
     private int _renderJobHeight;
+    private int _renderJobSampleCurrent;
+    private int _renderJobSampleTotal;
     private bool _renderJobShowHiddenObjects;
     private int _renderTimelineRestoreFrame;
     private bool _renderVideoWarmupFrame;
@@ -1875,13 +1877,20 @@ public class MainWindow : Window
 
     private unsafe void RenderRenderProgressSection()
     {
-        float progress = _renderFrameTotal <= 0 ? 0f : Math.Clamp(_renderFrameCurrent / (float)_renderFrameTotal, 0f, 1f);
+        float sampleProgress = _renderJobSampleTotal <= 0
+            ? 0f
+            : Math.Clamp(_renderJobSampleCurrent / (float)_renderJobSampleTotal, 0f, 1f);
+        float progress = _renderFrameTotal <= 0
+            ? 0f
+            : Math.Clamp((_renderFrameCurrent + sampleProgress) / _renderFrameTotal, 0f, 1f);
         double elapsed = Math.Max(0d, GetNowSeconds() - _renderJobStartedAtSeconds);
 
         ImGui.SeparatorText(Localization.T("text.window.main.progress"));
         UiText.Wrapped(_renderJobStatus);
         ImGui.ProgressBar(progress, new Vector2(360f * UiTheme.Scale, 0f), $"{progress * 100f:0.0}%");
         ImGui.TextUnformatted(Localization.Format("text.window.main.frames", _renderFrameCurrent, _renderFrameTotal));
+        if (_renderJobSampleTotal > 0)
+            ImGui.TextUnformatted($"Path-tracing samples: {_renderJobSampleCurrent}/{_renderJobSampleTotal} spp");
         ImGui.TextUnformatted(Localization.Format("text.window.main.elapsed_s", elapsed));
 
         if (_renderPreviewTexture != 0 && _renderPreviewWidth > 0 && _renderPreviewHeight > 0)
@@ -2008,6 +2017,8 @@ public class MainWindow : Window
             _renderJobStartedAtSeconds = GetNowSeconds();
             _renderJobWidth = width;
             _renderJobHeight = height;
+            _renderJobSampleCurrent = 0;
+            _renderJobSampleTotal = 0;
             _renderJobShowHiddenObjects = _renderPopupShowHiddenObjects;
             _renderFrameCurrent = 0;
             _renderVideoWarmupFrame = false;
@@ -2070,10 +2081,18 @@ public class MainWindow : Window
             {
                 _renderJobStatus = Localization.T("text.window.main.rendering_image");
                 bool rgba = _cameraViewport.TransparentBackground;
-                if (!_cameraViewport.CaptureCurrentView((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame, showHiddenObjects: _renderJobShowHiddenObjects, rgba: rgba))
+                if (!_cameraViewport.CaptureCurrentView((uint)_renderJobWidth, (uint)_renderJobHeight,
+                        _renderPopupHighQuality, out byte[] frame, out bool renderComplete, out int completedSamples,
+                        out int totalSamples, showHiddenObjects: _renderJobShowHiddenObjects, rgba: rgba,
+                        progressiveNuxTExport: true))
                     throw new InvalidOperationException(Localization.T("text.common.failed_to_capture_render_frame"));
 
                 UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight, rgba);
+                _renderJobSampleCurrent = completedSamples;
+                _renderJobSampleTotal = totalSamples;
+                if (!renderComplete)
+                    return;
+
                 _renderExporter.ExportImageFromRgb(_renderJobWidth, _renderJobHeight, _renderPopupImageFormat, _renderJobOutputPath, frame, rgba);
 
                 _renderFrameCurrent = 1;
@@ -2096,10 +2115,17 @@ public class MainWindow : Window
                 int timelineFrame = _renderFrameStart + _renderFrameCurrent;
                 _timeline.SetCurrentFrameForRender(timelineFrame);
                 bool rgba = _cameraViewport.TransparentBackground;
-                if (!_cameraViewport.CaptureCurrentView((uint)_renderJobWidth, (uint)_renderJobHeight, _renderPopupHighQuality, out byte[] frame, showHiddenObjects: _renderJobShowHiddenObjects, rgba: rgba))
+                if (!_cameraViewport.CaptureCurrentView((uint)_renderJobWidth, (uint)_renderJobHeight,
+                        _renderPopupHighQuality, out byte[] frame, out bool renderComplete, out int completedSamples,
+                        out int totalSamples, showHiddenObjects: _renderJobShowHiddenObjects, rgba: rgba,
+                        progressiveNuxTExport: true))
                     throw new InvalidOperationException(Localization.Format("text.window.main.failed_to_capture_frame", timelineFrame));
 
                 UpdateRenderPreviewTexture(frame, _renderJobWidth, _renderJobHeight, rgba);
+                _renderJobSampleCurrent = completedSamples;
+                _renderJobSampleTotal = totalSamples;
+                if (!renderComplete)
+                    return;
 
                 if (_renderPopupVideoFormat == "png")
                 {
@@ -2119,6 +2145,8 @@ public class MainWindow : Window
 
                 int justRenderedFrame = _renderFrameCurrent;
                 _renderFrameCurrent++;
+                _renderJobSampleCurrent = 0;
+                _renderJobSampleTotal = 0;
                 _renderJobStatus = Localization.Format("text.window.main.rendered_frame", justRenderedFrame, _renderFrameTotal - 1);
             }
 
@@ -2164,9 +2192,12 @@ public class MainWindow : Window
         IsAnimationRenderExportActive = false;
         if (_renderJobMode == RenderMode.Video && _timeline != null)
             _timeline.SetCurrentFrame(_renderTimelineRestoreFrame);
+        _cameraViewport?.CancelNuxTExportCapture();
 
         _renderEncodeTask = null;
         _renderExporter = null;
+        _renderJobSampleCurrent = 0;
+        _renderJobSampleTotal = 0;
         _renderJobActive = false;
         _renderJobFinished = true;
         _renderJobStatus = Localization.Format("text.window.main.render_complete", Path.GetFileName(_renderJobOutputPath));
@@ -2180,9 +2211,12 @@ public class MainWindow : Window
         IsAnimationRenderExportActive = false;
         if (_renderJobMode == RenderMode.Video && _timeline != null)
             _timeline.SetCurrentFrame(_renderTimelineRestoreFrame);
+        _cameraViewport?.CancelNuxTExportCapture();
 
         _renderEncodeTask = null;
         _renderExporter = null;
+        _renderJobSampleCurrent = 0;
+        _renderJobSampleTotal = 0;
         _renderJobActive = false;
         _renderJobFinished = true;
         _renderJobStatus = message;

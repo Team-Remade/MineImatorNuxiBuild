@@ -38,6 +38,8 @@
       <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" Version="15.0.0" GeneratePathProperty="true" />
       <PackageReference Include="NativeFileDialogSharp" Version="0.5.0" />
       <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+      <!-- Copy only the CPU runtime below; exclude package-native GPU backends from NativeAOT auto-embedding. -->
+      <PackageReference Include="oneAPI.OIDN.NET" Version="2.5.1" GeneratePathProperty="true" ExcludeAssets="native" />
       <PackageReference Include="OpenAL.Soft" Version="1.23.1" />
       <PackageReference Include="Sentry" Version="6.7.0" />
       <PackageReference Include="Silk.NET.Assimp" Version="2.23.0" />
@@ -67,10 +69,21 @@
         <IsPublishing Condition="'$(_IsPublishing)' == 'true' Or '$(DeployOnBuild)' == 'true' Or '$(PublishProtocol)' != '' Or '$(PublishProfile)' != '' Or '$(RuntimeIdentifier)' != '' Or '$(BuildingForPublish)' == 'true' Or $([System.String]::Copy('$(MSBuildTargets)').Contains('Publish')) Or $([System.String]::Copy('$(Target)').Contains('Publish'))">true</IsPublishing>
     </PropertyGroup>
 
+    <ItemGroup Condition="'$(OS)' == 'Windows_NT' and '$(IsPublishing)' != 'true' and Exists('$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native')">
+        <None Include="$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native\OpenImageDenoise.dll" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native\OpenImageDenoise_core.dll" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native\OpenImageDenoise_device_cpu.dll" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native\tbb12.dll" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
     <ItemGroup Condition="'$(IsPublishing)' == 'true'">
         <DanglingDllFiles Include="$(MSBuildProjectDirectory)\*.dll" />
         <DanglingDllFiles Include="$(PkgJoltPhysics_Native)\runtimes\win-x64\native\joltc.dll" />
         <DanglingDllFiles Include="$(PkgMagick_NET-Q16-HDRI-AnyCPU)\runtimes\win-x64\native\Magick.Native-Q16-HDRI-x64.dll" />
+        <DanglingDllFiles Include="$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native\OpenImageDenoise.dll" Condition="'$(OS)' == 'Windows_NT' and Exists('$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native')" />
+        <DanglingDllFiles Include="$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native\OpenImageDenoise_core.dll" Condition="'$(OS)' == 'Windows_NT' and Exists('$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native')" />
+        <DanglingDllFiles Include="$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native\OpenImageDenoise_device_cpu.dll" Condition="'$(OS)' == 'Windows_NT' and Exists('$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native')" />
+        <DanglingDllFiles Include="$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native\tbb12.dll" Condition="'$(OS)' == 'Windows_NT' and Exists('$(PkgOneAPI_OIDN_NET)\runtimes\win-x64\native')" />
         <EmbeddedResource Include="@(DanglingDllFiles)" LogicalName="%(Filename)%(Extension)" />
     </ItemGroup>
 

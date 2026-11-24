@@ -110,6 +110,7 @@ public class ProjectRenderSettings
     public float NuxTResolutionScale { get; set; } = 0.5f;
     public float NuxTExposure { get; set; } = 1f;
     public int NuxTSeed { get; set; } = 1;
+    public bool NuxTDenoiserEnabled { get; set; }
     public int MaxArrayInstances
     {
         get => _maxArrayInstances;

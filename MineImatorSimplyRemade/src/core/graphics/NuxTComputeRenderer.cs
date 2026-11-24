@@ -7,6 +7,8 @@ namespace MineImatorSimplyRemade.core.graphics;
 public sealed class NuxTComputeRenderer : IDisposable
 {
     private const int MaxRenderPixels = 8_388_608;
+    private const int DispatchTileSize = 128;
+    private const int MaxQueuedTileDispatches = 16;
     private const int MaxUploadChunkBytes = 8 * 1024 * 1024;
     private const int MaxUploadChunkRows = 64;
     private const int NodeBoundsTexture = 0;
@@ -41,6 +43,10 @@ public sealed class NuxTComputeRenderer : IDisposable
     private bool _transparentBackground;
     private bool _hasRequest;
     private bool _disposed;
+    private Task<DenoiseResult>? _denoisingTask;
+    private int _denoiserGeneration;
+    private int _denoisingTaskGeneration = -1;
+    private int _denoisedGeneration = -1;
     private string _status = "Idle";
     private int _sceneGeometryUploadCount;
     private int _lightingTextureUploadCount;
@@ -121,23 +127,227 @@ public sealed class NuxTComputeRenderer : IDisposable
             _settings = settings;
             _transparentBackground = transparentBackground;
             _completedSamples = 0;
+            _denoiserGeneration++;
+            _denoisedGeneration = -1;
             _hasRequest = true;
         }
 
+        PollDenoising();
         if (_completedSamples >= settings.Samples)
         {
-            _status = "Complete · GPU";
+            CompleteDenoising(completeImmediately);
             return true;
         }
 
+        int queuedTileDispatches = 0;
         do
         {
-            DispatchSample(scene, camera, width, height, settings, _completedSamples, transparentBackground);
+            DispatchSample(scene, camera, width, height, settings, _completedSamples, transparentBackground,
+                completeImmediately, ref queuedTileDispatches);
             _completedSamples++;
         } while (completeImmediately && _completedSamples < settings.Samples);
-        _status = _completedSamples >= settings.Samples ? "Complete · GPU" : "Tracing · GPU";
+        if (_completedSamples >= settings.Samples)
+            CompleteDenoising(completeImmediately);
+        else
+            _status = "Tracing · GPU";
         return true;
     }
+
+    private void CompleteDenoising(bool completeImmediately)
+    {
+        if (!_settings.DenoiserEnabled)
+        {
+            _status = "Complete · GPU";
+            return;
+        }
+
+        while (_denoisedGeneration != _denoiserGeneration)
+        {
+            PollDenoising();
+            if (_denoisedGeneration == _denoiserGeneration)
+                return;
+
+            if (_denoisingTask is null)
+            {
+                try
+                {
+                    StartDenoising();
+                }
+                catch (Exception exception)
+                {
+                    _denoisedGeneration = _denoiserGeneration;
+                    _status = $"Complete · GPU · Denoiser unavailable: {exception.Message}";
+                    return;
+                }
+            }
+
+            Task<DenoiseResult> task = _denoisingTask!;
+            if (!completeImmediately && (_denoisingTaskGeneration != _denoiserGeneration || !task.IsCompleted))
+            {
+                _status = "Denoising · GPU";
+                return;
+            }
+
+            if (completeImmediately)
+            {
+                try { task.GetAwaiter().GetResult(); }
+                catch (Exception) { }
+            }
+            PollDenoising();
+            if (_denoisingTask is not null && _denoisingTaskGeneration == _denoiserGeneration)
+                return;
+        }
+    }
+
+    private void StartDenoising()
+    {
+        float[] accumulation = ReadAccumulation();
+        int pixelCount = checked(_width * _height);
+        var linearRgb = new float[checked(pixelCount * 3)];
+        var alpha = new float[pixelCount];
+        for (int i = 0; i < pixelCount; i++)
+        {
+            int accumulationOffset = i * 4;
+            float coveredSamples = _transparentBackground ? accumulation[accumulationOffset + 3] : _completedSamples;
+            int colorOffset = i * 3;
+            if (coveredSamples > 0f)
+            {
+                linearRgb[colorOffset] = accumulation[accumulationOffset] / coveredSamples;
+                linearRgb[colorOffset + 1] = accumulation[accumulationOffset + 1] / coveredSamples;
+                linearRgb[colorOffset + 2] = accumulation[accumulationOffset + 2] / coveredSamples;
+            }
+            alpha[i] = _transparentBackground
+                ? accumulation[accumulationOffset + 3] / _completedSamples
+                : 1f;
+        }
+
+        int width = _width;
+        int height = _height;
+        int generation = _denoiserGeneration;
+        _denoisingTaskGeneration = generation;
+        _denoisingTask = Task.Run(() =>
+        {
+            bool succeeded = NuxTDenoiser.TryDenoiseLinearRgb(linearRgb, width, height,
+                out float[] filtered, out string? error);
+            return new DenoiseResult(succeeded ? filtered : null, alpha, error);
+        });
+        _status = "Denoising · GPU";
+    }
+
+    private void PollDenoising()
+    {
+        Task<DenoiseResult>? task = _denoisingTask;
+        if (task is null || !task.IsCompleted)
+            return;
+
+        int generation = _denoisingTaskGeneration;
+        DenoiseResult result = default;
+        string? error = null;
+        try
+        {
+            result = task.GetAwaiter().GetResult();
+            error = result.Error;
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+        _denoisingTask = null;
+        if (generation != _denoiserGeneration)
+            return;
+
+        if (error is null && result.LinearRgb is not null)
+        {
+            try
+            {
+                UploadDenoisedOutput(result.LinearRgb, result.Alpha, _settings.Exposure);
+            }
+            catch (Exception exception)
+            {
+                error = exception.Message;
+            }
+        }
+
+        _denoisedGeneration = generation;
+        _status = error is null
+            ? "Complete · GPU · Denoised"
+            : $"Complete · GPU · Denoiser unavailable: {error}";
+    }
+
+    private unsafe float[] ReadAccumulation()
+    {
+        var pixels = new float[checked(_width * _height * 4)];
+        int previousTexture = _gl.GetInteger(GLEnum.TextureBinding2D);
+        int previousPackBuffer = _gl.GetInteger(GLEnum.PixelPackBufferBinding);
+        int previousPackAlignment = _gl.GetInteger(GLEnum.PackAlignment);
+        int previousPackRowLength = _gl.GetInteger(GLEnum.PackRowLength);
+        int previousPackSkipPixels = _gl.GetInteger(GLEnum.PackSkipPixels);
+        int previousPackSkipRows = _gl.GetInteger(GLEnum.PackSkipRows);
+        try
+        {
+            _gl.BindTexture(GLEnum.Texture2D, _accumulationTexture);
+            _gl.BindBuffer(GLEnum.PixelPackBuffer, 0);
+            _gl.PixelStore(GLEnum.PackAlignment, 1);
+            _gl.PixelStore(GLEnum.PackRowLength, 0);
+            _gl.PixelStore(GLEnum.PackSkipPixels, 0);
+            _gl.PixelStore(GLEnum.PackSkipRows, 0);
+            fixed (float* data = pixels)
+                _gl.GetTexImage(GLEnum.Texture2D, 0, GLEnum.Rgba, GLEnum.Float, data);
+            return pixels;
+        }
+        finally
+        {
+            _gl.PixelStore(GLEnum.PackAlignment, previousPackAlignment);
+            _gl.PixelStore(GLEnum.PackRowLength, previousPackRowLength);
+            _gl.PixelStore(GLEnum.PackSkipPixels, previousPackSkipPixels);
+            _gl.PixelStore(GLEnum.PackSkipRows, previousPackSkipRows);
+            _gl.BindBuffer(GLEnum.PixelPackBuffer, (uint)previousPackBuffer);
+            _gl.BindTexture(GLEnum.Texture2D, (uint)previousTexture);
+        }
+    }
+
+    private unsafe void UploadDenoisedOutput(float[] linearRgb, float[] alpha, float exposure)
+    {
+        byte[] rgba = new byte[checked(_width * _height * 4)];
+        for (int i = 0; i < alpha.Length; i++)
+        {
+            int colorOffset = i * 3;
+            int pixelOffset = i * 4;
+            NuxTScene.WriteRgba(rgba, pixelOffset,
+                new Vector3(linearRgb[colorOffset], linearRgb[colorOffset + 1], linearRgb[colorOffset + 2]), exposure);
+            rgba[pixelOffset + 3] = (byte)Math.Clamp((int)MathF.Round(alpha[i] * 255f), 0, 255);
+        }
+
+        int previousTexture = _gl.GetInteger(GLEnum.TextureBinding2D);
+        int previousUnpackBuffer = _gl.GetInteger(GLEnum.PixelUnpackBufferBinding);
+        int previousUnpackAlignment = _gl.GetInteger(GLEnum.UnpackAlignment);
+        int previousUnpackRowLength = _gl.GetInteger(GLEnum.UnpackRowLength);
+        int previousUnpackSkipPixels = _gl.GetInteger(GLEnum.UnpackSkipPixels);
+        int previousUnpackSkipRows = _gl.GetInteger(GLEnum.UnpackSkipRows);
+        try
+        {
+            _gl.BindTexture(GLEnum.Texture2D, _outputTexture);
+            _gl.BindBuffer(GLEnum.PixelUnpackBuffer, 0);
+            _gl.PixelStore(GLEnum.UnpackAlignment, 1);
+            _gl.PixelStore(GLEnum.UnpackRowLength, 0);
+            _gl.PixelStore(GLEnum.UnpackSkipPixels, 0);
+            _gl.PixelStore(GLEnum.UnpackSkipRows, 0);
+            fixed (byte* data = rgba)
+                _gl.TexSubImage2D(GLEnum.Texture2D, 0, 0, 0, (uint)_width, (uint)_height,
+                    GLEnum.Rgba, GLEnum.UnsignedByte, data);
+        }
+        finally
+        {
+            _gl.PixelStore(GLEnum.UnpackAlignment, previousUnpackAlignment);
+            _gl.PixelStore(GLEnum.UnpackRowLength, previousUnpackRowLength);
+            _gl.PixelStore(GLEnum.UnpackSkipPixels, previousUnpackSkipPixels);
+            _gl.PixelStore(GLEnum.UnpackSkipRows, previousUnpackSkipRows);
+            _gl.BindBuffer(GLEnum.PixelUnpackBuffer, (uint)previousUnpackBuffer);
+            _gl.BindTexture(GLEnum.Texture2D, (uint)previousTexture);
+        }
+    }
+
+    private readonly record struct DenoiseResult(float[]? LinearRgb, float[] Alpha, string? Error);
 
     private unsafe void CompileProgram()
     {
@@ -638,7 +848,7 @@ public sealed class NuxTComputeRenderer : IDisposable
     }
 
     private void DispatchSample(NuxTScene scene, NuxTCamera camera, int width, int height, NuxTSettings settings,
-        int sampleIndex, bool transparentBackground)
+        int sampleIndex, bool transparentBackground, bool completeImmediately, ref int queuedTileDispatches)
     {
         _gl.UseProgram(_program);
         for (int i = 0; i < _sceneTextures.Length; i++)
@@ -698,8 +908,21 @@ public sealed class NuxTComputeRenderer : IDisposable
         SetUniform("uCameraUp", camera.Up);
         SetUniform("uEnvironment", scene.EnvironmentColor);
         SetUniform("uAmbient", scene.AmbientLight);
-        _gl.DispatchCompute((uint)((width + 7) / 8), (uint)((height + 7) / 8), 1);
-        _gl.MemoryBarrier((uint)(GLEnum.ShaderImageAccessBarrierBit | GLEnum.TextureFetchBarrierBit));
+        int tileOriginLocation = _gl.GetUniformLocation(_program, "uTileOrigin");
+        for (int tileY = 0; tileY < height; tileY += DispatchTileSize)
+        for (int tileX = 0; tileX < width; tileX += DispatchTileSize)
+        {
+            _gl.Uniform2(tileOriginLocation, tileX, tileY);
+            int tileWidth = Math.Min(DispatchTileSize, width - tileX);
+            int tileHeight = Math.Min(DispatchTileSize, height - tileY);
+            _gl.DispatchCompute((uint)((tileWidth + 7) / 8), (uint)((tileHeight + 7) / 8), 1);
+            _gl.MemoryBarrier((uint)(GLEnum.ShaderImageAccessBarrierBit | GLEnum.TextureFetchBarrierBit));
+            if (completeImmediately && ++queuedTileDispatches >= MaxQueuedTileDispatches)
+            {
+                _gl.Finish();
+                queuedTileDispatches = 0;
+            }
+        }
     }
 
     private void SetUniform(string name, int value) => _gl.Uniform1(_gl.GetUniformLocation(_program, name), value);

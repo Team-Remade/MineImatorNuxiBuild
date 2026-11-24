@@ -7,14 +7,16 @@ public readonly record struct NuxTSettings(
     int MaxBounces = 4,
     float ResolutionScale = 0.5f,
     float Exposure = 1f,
-    int Seed = 1)
+    int Seed = 1,
+    bool DenoiserEnabled = false)
 {
     public NuxTSettings Normalized() => new(
         Math.Clamp(Samples, 1, 4096),
         Math.Clamp(MaxBounces, 0, 16),
         Math.Clamp(float.IsFinite(ResolutionScale) ? ResolutionScale : 0.5f, 0.1f, 1f),
         Math.Clamp(float.IsFinite(Exposure) ? Exposure : 1f, 0.05f, 16f),
-        Seed);
+        Seed,
+        DenoiserEnabled);
 }
 
 public sealed class NuxTTexture(byte[] pixels, int width, int height)
@@ -1158,6 +1160,7 @@ public sealed class NuxTProgressiveRenderer : IDisposable
         var accumulation = new Vector4[checked(width * height)];
         int publishInterval = Math.Max(1, (settings.Samples + MaxPublishedFrames - 1) / MaxPublishedFrames);
         int completed = 0;
+        string? denoiserStatus = null;
         try
         {
             for (int sample = 0; sample < settings.Samples; sample++)
@@ -1192,14 +1195,51 @@ public sealed class NuxTProgressiveRenderer : IDisposable
                 if (completed % publishInterval != 0 && completed != settings.Samples)
                     continue;
 
+                float[]? denoisedLinearRgb = null;
+                if (completed == settings.Samples && settings.DenoiserEnabled)
+                {
+                    lock (_gate)
+                    {
+                        if (token.IsCancellationRequested || generation != _generation) return;
+                        _status = "Denoising · CPU";
+                    }
+
+                    float[] linearRgb = new float[checked(accumulation.Length * 3)];
+                    for (int i = 0; i < accumulation.Length; i++)
+                    {
+                        Vector4 accumulated = accumulation[i];
+                        float colorSamples = transparentBackground ? accumulated.W : completed;
+                        int colorOffset = i * 3;
+                        if (colorSamples > 0f)
+                        {
+                            linearRgb[colorOffset] = accumulated.X / colorSamples;
+                            linearRgb[colorOffset + 1] = accumulated.Y / colorSamples;
+                            linearRgb[colorOffset + 2] = accumulated.Z / colorSamples;
+                        }
+                    }
+
+                    if (NuxTDenoiser.TryDenoiseLinearRgb(linearRgb, width, height,
+                            out float[] filteredLinearRgb, out string? denoiserError))
+                    {
+                        denoisedLinearRgb = filteredLinearRgb;
+                        denoiserStatus = "Complete · CPU · Denoised";
+                    }
+                    else
+                        denoiserStatus = $"Complete · CPU · Denoiser unavailable: {denoiserError}";
+                }
+
                 byte[] rgba = new byte[checked(width * height * 4)];
                 for (int i = 0; i < accumulation.Length; i++)
                 {
                     Vector4 accumulated = accumulation[i];
                     float colorSamples = transparentBackground ? accumulated.W : completed;
-                    Vector3 color = colorSamples > 0f
-                        ? new Vector3(accumulated.X, accumulated.Y, accumulated.Z) / colorSamples
-                        : Vector3.Zero;
+                    int colorOffset = i * 3;
+                    Vector3 color = denoisedLinearRgb is not null
+                        ? new Vector3(denoisedLinearRgb[colorOffset], denoisedLinearRgb[colorOffset + 1],
+                            denoisedLinearRgb[colorOffset + 2])
+                        : colorSamples > 0f
+                            ? new Vector3(accumulated.X, accumulated.Y, accumulated.Z) / colorSamples
+                            : Vector3.Zero;
                     int offset = i * 4;
                     NuxTScene.WriteRgba(rgba, offset, color, settings.Exposure);
                     if (transparentBackground)
@@ -1211,12 +1251,15 @@ public sealed class NuxTProgressiveRenderer : IDisposable
                     var frame = new NuxTFrame(width, height, completed, rgba);
                     _latestFrame = frame;
                     if (completed == settings.Samples)
+                    {
                         _completedFrame = frame;
+                        _status = denoiserStatus ?? "Complete";
+                    }
                 }
             }
             lock (_gate)
                 if (!token.IsCancellationRequested && generation == _generation)
-                    _status = "Complete";
+                    _status = denoiserStatus ?? "Complete";
         }
         catch (OperationCanceledException) { }
         catch (Exception exception)

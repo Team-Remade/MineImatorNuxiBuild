@@ -20,6 +20,14 @@ seed. These controls are saved with the project. The viewport displays progress
 as samples accumulate; camera, scene, timeline, or setting changes restart the
 render. Lower the render scale or sample count for faster feedback.
 
+Enable **Denoiser (Intel Open Image Denoise)** to filter the completed linear HDR
+image with OIDN's CPU RT filter. Intermediate progressive samples remain
+unfiltered, and the denoiser changes color only; the original ray coverage and
+transparent-background alpha are preserved. GPU tracing reads back the finished
+accumulation once and filters it off the interactive thread. OIDN is bundled for
+Windows x64; if its native runtime cannot be loaded, NuxT keeps the raw render and
+reports the denoiser error in the renderer status.
+
 NuxT traces evaluated scene meshes with albedo/alpha-mask and animated textures,
 unlit materials, RGB/HSV material color adjustments, approximate diffuse/metal
 scattering, emission, environment and global ambient/directional lighting, and

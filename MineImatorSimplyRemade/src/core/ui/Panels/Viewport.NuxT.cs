@@ -173,7 +173,7 @@ public partial class Viewport
     }
 
     private unsafe uint RenderNuxTImage(Camera activeCamera, CameraSceneObject? activeCameraObject, uint width,
-        uint height, bool finalOutput = false, Viewport? renderView = null)
+        uint height, bool finalOutput = false, Viewport? renderView = null, bool progressiveExport = false)
     {
         if (!_useNuxT || Gl == null || width == 0 || height == 0)
             return 0;
@@ -188,7 +188,8 @@ public partial class Viewport
         PropertiesPanel? renderSettings = PropertiesPanel;
         var settings = new NuxTSettings(renderSettings?.NuxTSamples ?? 32,
             renderSettings?.NuxTMaxBounces ?? 4, renderSettings?.NuxTResolutionScale ?? 0.5f,
-            renderSettings?.NuxTExposure ?? 1f, renderSettings?.NuxTSeed ?? 1).Normalized();
+            renderSettings?.NuxTExposure ?? 1f, renderSettings?.NuxTSeed ?? 1,
+            renderSettings?.NuxTDenoiserEnabled ?? false).Normalized();
         if (finalOutput)
             settings = settings with { ResolutionScale = 1f };
         int renderWidth = Math.Max(1, (int)MathF.Round(width * settings.ResolutionScale));
@@ -236,7 +237,7 @@ public partial class Viewport
                 {
                     output.ComputeRenderer ??= new NuxTComputeRenderer(Gl);
                     if (output.ComputeRenderer.Render(scene, tracerCamera, renderWidth, renderHeight, settings,
-                            transparentBackground: true, completeImmediately: finalOutput))
+                            transparentBackground: true, completeImmediately: finalOutput && !progressiveExport))
                     {
                         output.Renderer?.Dispose();
                         output.Renderer = null;
@@ -261,7 +262,7 @@ public partial class Viewport
             }
 
             output.Renderer ??= new NuxTProgressiveRenderer();
-            if (finalOutput)
+            if (finalOutput && !progressiveExport)
             {
                 NuxTFrame frame = output.Renderer.RenderToCompletion(scene, tracerCamera, renderWidth, renderHeight,
                     settings, transparentBackground: true);
@@ -283,6 +284,56 @@ public partial class Viewport
         }
 
         return _nuxtCachedScene is not null && output.IsCurrent ? output.Texture : 0;
+    }
+
+    public bool TryGetNuxTExportProgress(Viewport renderView, out int completedSamples, out int totalSamples,
+        out bool complete)
+    {
+        completedSamples = 0;
+        totalSamples = 0;
+        complete = true;
+        if (!_useNuxT || !_nuxtViewOutputs.TryGetValue(renderView, out NuxTViewOutput? output))
+            return false;
+
+        string status;
+        totalSamples = Math.Max(1, PropertiesPanel?.NuxTSamples ?? 32);
+        if (output.Renderer is { } renderer)
+        {
+            completedSamples = renderer.CompletedSamples;
+            status = renderer.Status;
+        }
+        else if (output.ComputeRenderer is { } computeRenderer)
+        {
+            completedSamples = computeRenderer.CompletedSamples;
+            status = computeRenderer.Status;
+        }
+        else
+            return false;
+
+        if (status.StartsWith("Error:", StringComparison.Ordinal))
+            throw new InvalidOperationException($"NuxT path tracing failed: {status}");
+
+        complete = completedSamples >= totalSamples && status.StartsWith("Complete", StringComparison.Ordinal);
+        return true;
+    }
+
+    public void CancelNuxTExportCapture()
+    {
+        Viewport owner = MainViewport ?? this;
+        if (!owner._nuxtViewOutputs.TryGetValue(this, out NuxTViewOutput? output))
+            return;
+
+        output.Renderer?.Dispose();
+        output.Renderer = null;
+        output.ComputeRenderer?.Dispose();
+        output.ComputeRenderer = null;
+        if (output.Texture != 0)
+            owner.Gl?.DeleteTexture(output.Texture);
+        output.Texture = 0;
+        output.Width = 0;
+        output.Height = 0;
+        output.IsCurrent = false;
+        output.RequestKey = int.MinValue;
     }
 
     private NuxTViewOutput GetNuxTViewOutput(Viewport view)

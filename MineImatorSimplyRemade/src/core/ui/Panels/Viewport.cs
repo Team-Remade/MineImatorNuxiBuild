@@ -7615,7 +7615,8 @@ public partial class Viewport : UiPanel
     }
 
     public void RenderScenePublic(Camera cam, CameraSceneObject? sceneObj, uint w, uint h,
-        bool highQuality = false, bool applyCameraEffects = false, bool applyWatermark = false)
+        bool highQuality = false, bool applyCameraEffects = false, bool applyWatermark = false,
+        bool progressiveNuxTExport = false)
     {
         if (Gl == null || MainViewport == null) return;
         using var uncachedPreparation = SceneObject.SuspendRenderEvaluation();
@@ -7851,7 +7852,8 @@ public partial class Viewport : UiPanel
         if (!_profilingCameraFeeds && MainViewport._useNuxT &&
             renderMode == SceneRenderMode.Rendered && effectivePassMode == RenderedPassMode.Combined)
         {
-            uint nuxTexture = MainViewport.RenderNuxTImage(renderCamera, sceneObj, w, h, finalNuxTOutput, this);
+            uint nuxTexture = MainViewport.RenderNuxTImage(renderCamera, sceneObj, w, h, finalNuxTOutput, this,
+                progressiveNuxTExport);
             if (nuxTexture != 0)
                 CompositeNuxTImage(nuxTexture, _previewFbo, w, h);
         }
@@ -8073,10 +8075,18 @@ public partial class Viewport : UiPanel
     public bool CaptureCurrentViewRgb(uint w, uint h, bool highQuality, out byte[] rgbPixels, bool showHiddenObjects = false)
         => CaptureCurrentView(w, h, highQuality, out rgbPixels, showHiddenObjects);
 
-    public unsafe bool CaptureCurrentView(uint w, uint h, bool highQuality, out byte[] rgbPixels,
+    public bool CaptureCurrentView(uint w, uint h, bool highQuality, out byte[] rgbPixels,
         bool showHiddenObjects = false, bool rgba = false)
+        => CaptureCurrentView(w, h, highQuality, out rgbPixels, out _, out _, out _, showHiddenObjects, rgba);
+
+    public unsafe bool CaptureCurrentView(uint w, uint h, bool highQuality, out byte[] rgbPixels,
+        out bool renderComplete, out int completedSamples, out int totalSamples,
+        bool showHiddenObjects = false, bool rgba = false, bool progressiveNuxTExport = false)
     {
         rgbPixels = Array.Empty<byte>();
+        renderComplete = true;
+        completedSamples = 0;
+        totalSamples = 0;
         if (Gl == null || MainViewport == null || _previewFbo == 0 || w == 0 || h == 0)
             return false;
 
@@ -8091,19 +8101,22 @@ public partial class Viewport : UiPanel
         {
             UpdateCameraTextureFeeds();
             ResizeFboPublic(w, h);
-            RenderScenePublic(activeCam, sceneObj, w, h, highQuality, applyWatermark: true);
+            RenderScenePublic(activeCam, sceneObj, w, h, highQuality, applyWatermark: true,
+                progressiveNuxTExport: progressiveNuxTExport);
 
-            int channels = rgba ? 4 : 3;
-            rgbPixels = new byte[checked((int)(w * h * channels))];
+            bool usesNuxT = MainViewport._useNuxT &&
+                            (highQuality || _viewportRenderMode == ViewportRenderMode.Rendered) &&
+                            (highQuality || _renderedPassMode == RenderedPassMode.Combined);
+            if (progressiveNuxTExport && usesNuxT &&
+                !MainViewport.TryGetNuxTExportProgress(this, out completedSamples, out totalSamples, out renderComplete))
+            {
+                throw new InvalidOperationException("NuxT export progress is unavailable.");
+            }
 
-            Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
-            Gl.PixelStore(GLEnum.PackAlignment, 1);
-            fixed (byte* p = rgbPixels)
-                Gl.ReadPixels(0, 0, w, h, rgba ? GLEnum.Rgba : GLEnum.Rgb, GLEnum.UnsignedByte, p);
-            Gl.PixelStore(GLEnum.PackAlignment, 4);
-            Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+            if (!ReadFramebufferPixels(_previewFbo, w, h, rgba, out rgbPixels))
+                return false;
 
-            FlipRgbRows(rgbPixels, (int)w, (int)h, channels);
+            FlipRgbRows(rgbPixels, (int)w, (int)h, rgba ? 4 : 3);
             return true;
         }
         finally
@@ -8112,6 +8125,65 @@ public partial class Viewport : UiPanel
             OverlaysEnabled = previousOverlays;
             if (previousShowHiddenObjects != showHiddenObjects)
                 UpdateCameraTextureFeeds();
+        }
+    }
+
+    private unsafe bool ReadFramebufferPixels(uint framebuffer, uint width, uint height, bool rgba,
+        out byte[] pixels)
+    {
+        pixels = Array.Empty<byte>();
+        if (Gl == null || framebuffer == 0 || width == 0 || height == 0)
+            return false;
+
+        int previousReadFramebuffer = Gl.GetInteger(GLEnum.ReadFramebufferBinding);
+        int previousPackAlignment = Gl.GetInteger(GLEnum.PackAlignment);
+        int previousPackRowLength = Gl.GetInteger(GLEnum.PackRowLength);
+        int previousPackSkipPixels = Gl.GetInteger(GLEnum.PackSkipPixels);
+        int previousPackSkipRows = Gl.GetInteger(GLEnum.PackSkipRows);
+        int previousPackBuffer = Gl.GetInteger(GLEnum.PixelPackBufferBinding);
+        int previousFramebufferReadBuffer = (int)GLEnum.ColorAttachment0;
+        bool readFramebufferBound = false;
+        try
+        {
+            Gl.BindFramebuffer(GLEnum.ReadFramebuffer, framebuffer);
+            readFramebufferBound = true;
+            previousFramebufferReadBuffer = Gl.GetInteger(GLEnum.ReadBuffer);
+            if (Gl.CheckFramebufferStatus(GLEnum.ReadFramebuffer) != GLEnum.FramebufferComplete)
+                return false;
+
+            long byteCount;
+            try
+            {
+                byteCount = checked((long)width * height * (rgba ? 4 : 3));
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
+            if (byteCount > int.MaxValue)
+                return false;
+
+            Gl.ReadBuffer(GLEnum.ColorAttachment0);
+            Gl.BindBuffer(GLEnum.PixelPackBuffer, 0);
+            Gl.PixelStore(GLEnum.PackAlignment, 1);
+            Gl.PixelStore(GLEnum.PackRowLength, 0);
+            Gl.PixelStore(GLEnum.PackSkipPixels, 0);
+            Gl.PixelStore(GLEnum.PackSkipRows, 0);
+            pixels = new byte[(int)byteCount];
+            fixed (byte* p = pixels)
+                Gl.ReadPixels(0, 0, width, height, rgba ? GLEnum.Rgba : GLEnum.Rgb, GLEnum.UnsignedByte, p);
+            return true;
+        }
+        finally
+        {
+            if (readFramebufferBound)
+                Gl.ReadBuffer((GLEnum)previousFramebufferReadBuffer);
+            Gl.PixelStore(GLEnum.PackAlignment, previousPackAlignment);
+            Gl.PixelStore(GLEnum.PackRowLength, previousPackRowLength);
+            Gl.PixelStore(GLEnum.PackSkipPixels, previousPackSkipPixels);
+            Gl.PixelStore(GLEnum.PackSkipRows, previousPackSkipRows);
+            Gl.BindBuffer(GLEnum.PixelPackBuffer, (uint)previousPackBuffer);
+            Gl.BindFramebuffer(GLEnum.ReadFramebuffer, (uint)previousReadFramebuffer);
         }
     }
 
