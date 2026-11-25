@@ -39,6 +39,24 @@ internal static partial class Program
                 return 1;
             }
         }
+        int perfProject = Array.IndexOf(args, "--perf-project");
+        if (perfProject >= 0)
+        {
+            try
+            {
+                if (perfProject + 1 >= args.Length)
+                    throw new ArgumentException("--perf-project requires an .nxProj path or project folder.");
+                int Arg(int offset, int fallback) => perfProject + offset < args.Length &&
+                    int.TryParse(args[perfProject + offset], out int value) ? value : fallback;
+                PerfProject(args[perfProject + 1], Arg(2, 60), (uint)Arg(3, 1280), (uint)Arg(4, 720), Arg(5, 0));
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(exception);
+                return 1;
+            }
+        }
         int nuxtProject = Array.IndexOf(args, "--nuxt-project");
         if (nuxtProject >= 0)
         {
@@ -778,6 +796,8 @@ internal static partial class Program
             tests = [("Enchantment glint GPU pixels, animation, alpha and disabled parity", EnchantmentGlintGraphics)];
         if (args.Contains("--material-colors", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Material color operations", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--instancing-graphics", StringComparer.Ordinal))
+            tests = [("Instanced scene draws match per-mesh pixels and every shading setting prevents merging", InstancingGraphics)];
         if (args.Contains("--material-colors-graphics", StringComparer.Ordinal))
             tests = [("Material color operations GPU pixels, stacking, alpha, previews, export and D3D11", MaterialColorGraphics)];
         if (args.Contains("--shader-graph", StringComparer.Ordinal))

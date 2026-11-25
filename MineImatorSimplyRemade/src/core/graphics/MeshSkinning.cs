@@ -28,11 +28,12 @@ internal static class MeshSkinning
         using var profileScope = FrameProfiler.Shared.Measure(ProfileStage.BoneMatrices);
         if (mesh.BoneNames.Count == 0 || mesh.BoneInverseBindMatrices.Count == 0) return;
         mat4 meshWorldInverse = meshWorld.Inverse;
-        var matrices = new List<mat4>(mesh.BoneNames.Count);
+        // Reuse the mesh's matrix list; every consumer reads it immediately and never retains it.
+        var matrices = mesh.BoneMatrices ??= new List<mat4>(mesh.BoneNames.Count);
+        matrices.Clear();
         for (int i = 0; i < mesh.BoneNames.Count; i++)
             matrices.Add(boneDict.TryGetValue(mesh.BoneNames[i], out var bone)
                 ? meshWorldInverse * bone.GetWorldMatrix() * mesh.BoneInverseBindMatrices[i]
                 : mat4.Identity);
-        mesh.BoneMatrices = matrices;
     }
 }

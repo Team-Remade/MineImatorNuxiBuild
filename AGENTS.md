@@ -95,6 +95,7 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --shader-graph-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --fluid
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --fluid-graphics
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --instancing-graphics
 ```
 
 Coverage and prerequisites:
@@ -162,6 +163,10 @@ Coverage and prerequisites:
   bounds, validation, and source-generated archive/import/duplication persistence.
 - `--fluid-graphics`: OpenGL 3.3; particle and reconstructed surface pixels,
   animation, and backward-seek reproduction.
+- `--instancing-graphics`: OpenGL 3.3; instanced scene draws against per-mesh draws
+  (exact pixels, merged draw/mesh counts, interleaved meshes staying in scene order, opt-in
+  reordering), plus a mutation check that changes every public `Mesh` and `StandardMaterial`
+  setting and requires `Mesh.CanInstanceWith` to notice it.
 - `--block-rotation-graphics`: OpenGL 3.3; button mounting/facing (including legacy
   stone and wooden buttons), trapdoors, both door halves, multipart rotations,
   and consistent geometry after conversion to animatable blocks, rebuilding,
@@ -353,6 +358,77 @@ separately for OpenGL pixel/orientation and reload checks. Use
 `--meshcache-file "path\to\file.meshcache"` to validate a real file without
 modifying it. Imports are bounded to 512 MiB decompressed data and eight million
 rendered vertices.
+
+### Scene instancing
+
+Consecutive scene-pass meshes with identical geometry and shading state draw as one
+`DrawElementsInstanced` call (`Mesh.Instancing.cs`, `Viewport.RenderDepthOrdered`). The
+vertex shader reads the model matrix from attributes 5-8 and clip position from `uViewProj`
+when `uUseInstancing` is set; everything else comes from the first mesh's uniforms.
+
+- Merging never changes draw order, so blending and depth results stay identical. Meshes
+  that are skinned, actively bent (non-zero `GpuBend.Angle`), shape-keyed, cloth, wind
+  affected, animated-texture, glint, shader-graph or picking-only stay on per-mesh draws,
+  as do scenes with more than `MaxLightsPerMesh` point lights (light selection is per
+  mesh position).
+- Geometry equality is exact: `GetGeometryShare` hashes the uploaded vertex data and
+  confirms it element by element. Material equality is the hand-written
+  `Mesh.InstanceStateEquals`. It deliberately avoids reflection, which NativeAOT cannot
+  rely on. When you add a public setting to `Mesh` or `StandardMaterial`, add it to that
+  method; `--instancing-graphics` fails when a changed setting is not noticed.
+- `Mesh.InstancingReorder` (off by default) additionally gathers identical meshes that are
+  not neighbours. Moving a mesh across others can change partially transparent parts that
+  still write depth, so enable it only for scenes known to be opaque or cutout.
+- Per-mesh submission cost dominates large scenes. Instancing removes it only for merged
+  runs. Mine-imator character parts with an active bend remain individual draws.
+
+### Render batch state reuse
+
+Inside `Mesh.BeginRenderBatch`, `Mesh.Render` avoids re-sending state the previous mesh
+already left in place. Most of a mesh's roughly 90 uniforms are identical to its
+neighbour's, and checking them one by one was the largest per-mesh cost.
+
+- `ApplyMaterialUniforms` is skipped when the mesh's material matches the last mesh drawn
+  with the same program: `MaterialStateEquals` (the shared part of `InstanceStateEquals`)
+  plus the call inputs that `RenderMeshWithModeOverride` overrides (fog, unlit) and the
+  lighting flag. Everything else in that block is a scene-wide static that cannot change
+  inside a batch. `uPbrEnabled` is set outside the block because `Render` resets it after
+  every draw. Add per-mesh values that are not covered by `MaterialStateEquals` to that
+  method, not to the block.
+- The batch also tracks the bound program, scene uniform buffer link, vertex array, face
+  culling and texture unit 13, and restores the defaults once when it ends. Code that
+  changes GL state inside a batch must call `Mesh.InvalidateBatchTextureCache`.
+- `Mesh.BatchStateReuse = false` (`NX_NO_STATE_REUSE=1` in `--perf-project`) sends all state
+  for every mesh. `--instancing-graphics` renders a mixed-material row both ways and
+  requires identical pixels; it fails if a reused value goes stale.
+- Shadow passes (`RenderShadowCasters`, `RenderPointShadowCasters`) run in their own
+  batch per map or cube face. Each point-light face culls casters against that face's
+  frustum.
+
+### Playback performance
+
+- `--perf-project "path\to\project.nxProj" [frames] [width] [height] [startFrame]` renders
+  real frames of a saved project and prints the `FrameProfiler` stage table and counters.
+  It registers the timeline, marks it as playing and applies each frame's keyframes
+  (`Keyframe application` line) before rendering, like playback in the editor. Switches:
+  `NX_PAUSED=1` measures the paused editor, `NX_RENDERED=1` renders the Rendered view
+  (shadows and lighting passes), `NX_NO_INSTANCING=1`, `NX_REORDER=1` and
+  `NX_NO_STATE_REUSE=1` turn individual optimizations off for A/B runs. Use a Release
+  build. A bare frame counter without keyframe application hides the animation cost.
+- `Timeline.ApplyKeyframeChannels` resolves track owners through one id lookup per call
+  (`BuildObjectLookup`, same precedence as `FindObjectById`). Searching the scene for each
+  of thousands of tracks made playback cost tracks x objects per frame.
+- A keyframe pass defers bend visuals with `MiBoneSceneObject.BeginBendRefreshBatch`, so a
+  bone with CPU-bent geometry (extruded 3D planes) rebuilds once per frame instead of once
+  per axis. `RegenerateMeshes` disposes the meshes it replaces, and a rebuild is skipped
+  while the effective bend angle and the bone's meshes are unchanged. Anything else that
+  changes how those meshes are generated must reset `_generatedBendAngle`.
+- Shadow maps cannot be reused while the timeline plays or an animation exports
+  (`CanReuseShadowMaps`), so the scene signature is not hashed then and the cached map is
+  marked invalid.
+- Per-frame costs measured on the bundled benchmark project (Release, 1280x720, timeline
+  playing): the plain preview takes about 20 ms, and the Rendered view with shadows about
+  60 ms, most of it the shadow passes.
 
 ### Look At constraints
 

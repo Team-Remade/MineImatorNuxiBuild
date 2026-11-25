@@ -356,6 +356,7 @@ public class MiBoneSceneObject : BoneSceneObject
     public void SetBendParameters(BendParams? bendParams, float lockBend)
     {
         InvalidateRenderEvaluation();
+        _generatedBendAngle = null;
         BendParameters = bendParams;
         LockBend = Math.Clamp(lockBend, 0f, 1f);
         // SceneObject.GetWorldMatrix reads the inherited field. Keep it in sync
@@ -400,6 +401,7 @@ public class MiBoneSceneObject : BoneSceneObject
     /// <summary>Registers shape data so meshes can be regenerated when the bend angle changes.</summary>
     public void RegisterShapeData(BoneShapeData data)
     {
+        _generatedBendAngle = null;
         _shapeDataList.Add(data);
     }
 
@@ -494,6 +496,7 @@ public class MiBoneSceneObject : BoneSceneObject
     /// <summary>Updates stored shape data and implicit bend widths for a model style change.</summary>
     public void SetModelBendStyle(BendStyle oldStyle, BendStyle newStyle)
     {
+        _generatedBendAngle = null;
         foreach (var shapeData in _shapeDataList)
             shapeData.ModelBendStyle = newStyle;
 
@@ -517,6 +520,8 @@ public class MiBoneSceneObject : BoneSceneObject
     {
         if (_shapeDataList.Count > 0)
         {
+            // The replaced meshes own GPU buffers; dropping them without disposing leaked a set per rebuild.
+            var replaced = Visuals.ToArray();
             Visuals.Clear();
 
             BendParams? effectiveBendParams = GetEffectiveBendParameters();
@@ -532,6 +537,10 @@ public class MiBoneSceneObject : BoneSceneObject
                 mesh.DoubleSided = sd.DoubleSided;
                 AddMesh(mesh);
             }
+
+            foreach (var old in replaced) old.Dispose();
+            _generatedBendAngle = effectiveBendParams?.Angle;
+            _generatedMeshes = Visuals.ToArray();
         }
 
         // Propagate to inheriting children
@@ -553,8 +562,59 @@ public class MiBoneSceneObject : BoneSceneObject
         RegenerateMeshes(propagateInheritedBends: false);
     }
 
+    // Effective bend angle and meshes of the last RegenerateMeshes call. While both still match, the
+    // CPU-bent geometry is already correct and does not need to be built again.
+    private vec3? _generatedBendAngle;
+    private Mesh[]? _generatedMeshes;
+
+    private bool CpuBendGeometryIsCurrent()
+    {
+        if (_generatedBendAngle is not { } generated || _generatedMeshes is not { } meshes ||
+            !BendParameters.HasValue || meshes.Length != Visuals.Count || GetEffectiveBendAngle() != generated)
+            return false;
+        for (int i = 0; i < meshes.Length; i++)
+            if (!ReferenceEquals(meshes[i], Visuals[i])) return false;
+        return true;
+    }
+
+    private static int _bendRefreshDepth;
+    private static readonly List<MiBoneSceneObject> PendingBendRefreshes = [];
+    private static readonly HashSet<MiBoneSceneObject> PendingBendRefreshPropagation = [];
+
+    /// <summary>
+    /// Defers bend visual refreshes until the scope ends. A frame applies each bend axis as its own channel;
+    /// without this, a bone with CPU-bent geometry was rebuilt once per axis.
+    /// </summary>
+    internal static BendRefreshBatch BeginBendRefreshBatch()
+    {
+        _bendRefreshDepth++;
+        return default;
+    }
+
+    internal readonly struct BendRefreshBatch : IDisposable
+    {
+        public void Dispose()
+        {
+            if (--_bendRefreshDepth > 0) return;
+            var bones = PendingBendRefreshes.ToArray();
+            var propagating = new HashSet<MiBoneSceneObject>(PendingBendRefreshPropagation);
+            PendingBendRefreshes.Clear();
+            PendingBendRefreshPropagation.Clear();
+            foreach (var bone in bones)
+                bone.RefreshBendVisuals(propagating.Contains(bone));
+        }
+    }
+
     private void RefreshBendVisuals(bool propagateInheritedBends)
     {
+        if (_bendRefreshDepth > 0)
+        {
+            if (!PendingBendRefreshes.Contains(this))
+                PendingBendRefreshes.Add(this);
+            if (propagateInheritedBends) PendingBendRefreshPropagation.Add(this);
+            return;
+        }
+
         if (_shapeDataList.Zip(Visuals).Any(static pair =>
             pair.First.Shape is { Type: "plane", ThreeD: true, Bend: true } && pair.Second.GpuBend == null))
         {
@@ -563,7 +623,8 @@ public class MiBoneSceneObject : BoneSceneObject
             else
             {
                 _clothBendDeferred = false;
-                RegenerateMeshes(propagateInheritedBends: false);
+                if (!CpuBendGeometryIsCurrent())
+                    RegenerateMeshes(propagateInheritedBends: false);
             }
         }
         else

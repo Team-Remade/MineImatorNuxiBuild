@@ -27,7 +27,8 @@ public enum ProfileCounter
     MeshFlattenCalls, SnapshotsCreated, SnapshotCacheHits, MainRenderInvocations,
     PreviewRenderInvocations, CameraFeedRenderInvocations, WorldMatrixCacheHits,
     VisibilityCacheHits, ShadowCacheHits, ShadowBoundsRebuilds, LightCandidatesExamined,
-    PointLightsUploaded, EmissiveProxyLights, LightSelectionCacheHits, ClothBvhNodesVisited, Count
+    PointLightsUploaded, EmissiveProxyLights, LightSelectionCacheHits, ClothBvhNodesVisited,
+    InstancedDrawCalls, InstancedMeshes, Count
 }
 
 public readonly record struct ProfileStageSummary(ProfileStage Stage, double MeanMs, double MaxMs, double MeanCalls)

@@ -56,6 +56,8 @@ public partial class Viewport : UiPanel
     private void ResetModifierEvaluation() =>
         (MainViewport ?? this)._modifierEvaluation = new ModifierEvaluation((MainViewport ?? this).SceneObjects);
 
+    private int _lastPreviewItemCount, _lastPreviewNoAoCount;
+
     private IEnumerable<mat4> GetModifiedWorldMatrices(SceneObject obj, mat4 source, vec3? cameraPos = null)
     {
         var owner = MainViewport ?? this;
@@ -4004,7 +4006,9 @@ public partial class Viewport : UiPanel
             return;
         }
 
-        int cacheSignature = ComputeShadowCacheSignature(SceneObjects, includePointLights: false);
+        // A cached shadow map can only be reused while paused, so hashing the scene is skipped otherwise.
+        bool canReuseShadows = CanReuseShadowMaps();
+        int cacheSignature = canReuseShadows ? ComputeShadowCacheSignature(SceneObjects, includePointLights: false) : 0;
         mat4 lightViewProj = GetDirectionalShadowLightSpaceMatrix(cacheSignature, out bool reuseShadowMap);
         Mesh.ShadowsEnabled = true;
         Mesh.ShadowMapTexture = _shadowTex;
@@ -4019,16 +4023,19 @@ public partial class Viewport : UiPanel
         Gl.Enable(GLEnum.DepthTest);
         Gl.Disable(GLEnum.CullFace);
 
-        RenderShadowCasters(SceneObjects, lightViewProj, _shadowShader!, SceneRenderMode.Rendered);
+        // Neighbouring casters mostly share material state; a batch lets RenderShadow skip repeated uniforms.
+        using (Mesh.BeginRenderBatch(Gl))
+            RenderShadowCasters(SceneObjects, lightViewProj, _shadowShader!, SceneRenderMode.Rendered);
 
         Gl.Enable(GLEnum.CullFace);
         Gl.CullFace(GLEnum.Back);
         Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
         Gl.Viewport(0, 0, _viewportWidth, _viewportHeight);
 
+        // Without a computed signature the map cannot be matched later, so the next paused frame redraws it.
         _directionalShadowCacheSignature = cacheSignature;
         _directionalShadowLightSpaceMatrix = lightViewProj;
-        _hasDirectionalShadowCache = true;
+        _hasDirectionalShadowCache = canReuseShadows;
     }
 
     private mat4 GetDirectionalShadowLightSpaceMatrix(int cacheSignature, out bool reuseShadowMap)
@@ -4070,8 +4077,9 @@ public partial class Viewport : UiPanel
 
         int lightCount = Math.Min(shadowLights.Count, MaxPointShadowLights);
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
-        int cacheSignature = ComputeShadowCacheSignature(SceneObjects, includePointLights: true);
-        bool refreshShadowMaps = !CanReuseShadowMaps() ||
+        bool canReuseShadows = CanReuseShadowMaps();
+        int cacheSignature = canReuseShadows ? ComputeShadowCacheSignature(SceneObjects, includePointLights: true) : 0;
+        bool refreshShadowMaps = !canReuseShadows ||
             !_hasPointShadowCache ||
             _pointShadowCacheSignature != cacheSignature;
 
@@ -4108,7 +4116,8 @@ public partial class Viewport : UiPanel
                 Gl.Enable(GLEnum.DepthTest);
                 Gl.Disable(GLEnum.CullFace);
 
-                RenderPointShadowCasters(SceneObjects, lightViewProj, position, farPlane, _pointShadowShader!, SceneRenderMode.Rendered);
+                using (Mesh.BeginRenderBatch(Gl))
+                    RenderPointShadowCasters(SceneObjects, lightViewProj, position, farPlane, _pointShadowShader!, SceneRenderMode.Rendered);
             }
         }
 
@@ -4117,7 +4126,7 @@ public partial class Viewport : UiPanel
         Gl.BindFramebuffer(GLEnum.Framebuffer, _fbo);
         Gl.Viewport(0, 0, _viewportWidth, _viewportHeight);
         _pointShadowCacheSignature = cacheSignature;
-        _hasPointShadowCache = true;
+        _hasPointShadowCache = canReuseShadows;
         return shadowIndices;
     }
 
@@ -4394,8 +4403,13 @@ public partial class Viewport : UiPanel
         }
     }
 
-    private void RenderPointShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, vec3 lightPos, float farPlane, Shader pointShadowShader, SceneRenderMode renderMode, Dictionary<string, BoneSceneObject>? boneDict = null)
+    private void RenderPointShadowCasters(IEnumerable<SceneObject> objects, mat4 lightViewProj, vec3 lightPos, float farPlane, Shader pointShadowShader, SceneRenderMode renderMode, Dictionary<string, BoneSceneObject>? boneDict = null) =>
+        RenderPointShadowCastersInFace(objects, lightViewProj, lightPos, farPlane, pointShadowShader, renderMode, boneDict,
+            Frustum.FromViewProj(lightViewProj));
+
+    private void RenderPointShadowCastersInFace(IEnumerable<SceneObject> objects, mat4 lightViewProj, vec3 lightPos, float farPlane, Shader pointShadowShader, SceneRenderMode renderMode, Dictionary<string, BoneSceneObject>? boneDict, Frustum frustum)
     {
+        // Each cube face only sees a 90-degree wedge; meshes outside it cannot reach that face's depth map.
         foreach (var obj in objects)
         {
             if (!obj.GetEffectiveVisibility())
@@ -4432,6 +4446,8 @@ public partial class Viewport : UiPanel
                         float worldRadius = mesh.BoundingSphereRadius * scale + mesh.WindBoundsPadding;
                         if (distToLight - worldRadius > farPlane)
                             continue;
+                        if (!frustum.TestSphere(worldCenter, worldRadius))
+                            continue;
 
                         if (mesh.IsSkinned)
                             UpdateBoneMatrices(mesh, sourceModel, localBoneDict);
@@ -4440,7 +4456,7 @@ public partial class Viewport : UiPanel
                     }
             }
 
-            RenderPointShadowCasters(obj.Children, lightViewProj, lightPos, farPlane, pointShadowShader, renderMode, localBoneDict);
+            RenderPointShadowCastersInFace(obj.Children, lightViewProj, lightPos, farPlane, pointShadowShader, renderMode, localBoneDict, frustum);
         }
     }
 
@@ -4486,8 +4502,9 @@ public partial class Viewport : UiPanel
             return;
         }
 
-        int cacheSignature = ComputeShadowCacheSignature(sceneObjects, includePointLights: false);
-        bool reuseShadowMap = CanReuseShadowMaps() && _hasPreviewDirectionalShadowCache &&
+        bool canReuseShadows = CanReuseShadowMaps();
+        int cacheSignature = canReuseShadows ? ComputeShadowCacheSignature(sceneObjects, includePointLights: false) : 0;
+        bool reuseShadowMap = canReuseShadows && _hasPreviewDirectionalShadowCache &&
             _previewDirectionalShadowCacheSignature == cacheSignature;
         mat4 lightViewProj = reuseShadowMap
             ? _previewDirectionalShadowLightSpaceMatrix
@@ -4508,7 +4525,8 @@ public partial class Viewport : UiPanel
         Gl.Enable(GLEnum.DepthTest);
         Gl.Disable(GLEnum.CullFace);
 
-        RenderShadowCasters(sceneObjects, lightViewProj, _previewShadowShader!, SceneRenderMode.Rendered);
+        using (Mesh.BeginRenderBatch(Gl))
+            RenderShadowCasters(sceneObjects, lightViewProj, _previewShadowShader!, SceneRenderMode.Rendered);
 
         Gl.Enable(GLEnum.CullFace);
         Gl.CullFace(GLEnum.Back);
@@ -4516,7 +4534,7 @@ public partial class Viewport : UiPanel
         Gl.Viewport(0, 0, _previewWidth, _previewHeight);
         _previewDirectionalShadowCacheSignature = cacheSignature;
         _previewDirectionalShadowLightSpaceMatrix = lightViewProj;
-        _hasPreviewDirectionalShadowCache = true;
+        _hasPreviewDirectionalShadowCache = canReuseShadows;
     }
 
     /// <summary>
@@ -4545,12 +4563,17 @@ public partial class Viewport : UiPanel
         Array.Clear(Mesh.PointShadowCubeTextures, 0, Mesh.PointShadowCubeTextures.Length);
 
         var properties = MainViewport?.PropertiesPanel ?? PropertiesPanel;
-        var hash = new HashCode();
-        hash.Add(ComputeShadowCacheSignature(MainViewport?.SceneObjects ?? [], includePointLights: true));
-        // A camera move can change the selected lights and their cubemap slots.
-        for (int i = 0; i < lightCount; i++) hash.Add(shadowLights[i].Light);
-        int cacheSignature = hash.ToHashCode();
-        bool refreshShadowMaps = !CanReuseShadowMaps() || !_hasPreviewPointShadowCache ||
+        bool canReuseShadows = CanReuseShadowMaps();
+        int cacheSignature = 0;
+        if (canReuseShadows)
+        {
+            var hash = new HashCode();
+            hash.Add(ComputeShadowCacheSignature(MainViewport?.SceneObjects ?? [], includePointLights: true));
+            // A camera move can change the selected lights and their cubemap slots.
+            for (int i = 0; i < lightCount; i++) hash.Add(shadowLights[i].Light);
+            cacheSignature = hash.ToHashCode();
+        }
+        bool refreshShadowMaps = !canReuseShadows || !_hasPreviewPointShadowCache ||
             _previewPointShadowCacheSignature != cacheSignature;
         for (int lightIndex = 0; lightIndex < lightCount; lightIndex++)
         {
@@ -4586,7 +4609,8 @@ public partial class Viewport : UiPanel
                 Gl.Enable(GLEnum.DepthTest);
                 Gl.Disable(GLEnum.CullFace);
 
-                RenderPointShadowCasters(MainViewport?.SceneObjects ?? [], lightViewProj, position, farPlane, _previewPointShadowShader!, SceneRenderMode.Rendered);
+                using (Mesh.BeginRenderBatch(Gl))
+                    RenderPointShadowCasters(MainViewport?.SceneObjects ?? [], lightViewProj, position, farPlane, _previewPointShadowShader!, SceneRenderMode.Rendered);
             }
         }
 
@@ -4595,7 +4619,7 @@ public partial class Viewport : UiPanel
         Gl.BindFramebuffer(GLEnum.Framebuffer, _previewFbo);
         Gl.Viewport(0, 0, _previewWidth, _previewHeight);
         _previewPointShadowCacheSignature = cacheSignature;
-        _hasPreviewPointShadowCache = true;
+        _hasPreviewPointShadowCache = canReuseShadows;
         return shadowIndices;
     }
 
@@ -5255,6 +5279,7 @@ public partial class Viewport : UiPanel
     private readonly List<(mat4 model, Mesh mesh)> _cachedOverlays = new();
     private readonly List<(bool ignoresDepth, bool translucent, float depth, float distance, int index)> _renderOrder = new();
     private readonly HashSet<uint> _preparedMipmaps = new();
+    private readonly List<mat4> _instanceModels = new();
     private readonly Dictionary<vec3, int> _pointLightSelections = new();
     private readonly List<int> _pointLightSelectionIndices = new();
 
@@ -5708,20 +5733,77 @@ public partial class Viewport : UiPanel
         Gl.Disable(GLEnum.Blend, 1);
         Gl.Disable(GLEnum.Blend, 2);
         Gl.DepthMask(true);
-        foreach (var (_, _, _, _, index) in _renderOrder)
+        // Skip redundant GL state calls between consecutive meshes; Mesh.Render only changes the
+        // depth mask for meshes that disable depth writes or tests, which invalidate the cache.
+        bool? cachedDepthMask = true;
+        bool? cachedColorMaskEnabled = null;
+        MaterialBlendMode? cachedBlendMode = null;
+        // Every mesh sees the same lights unless the scene has more than MaxLightsPerMesh of them.
+        bool sharedLights = allLights.Count <= MaxLightsPerMesh;
+        if (sharedLights && Mesh.InstancingEnabled && Mesh.InstancingReorder && !forceUnshaded)
+            GatherInstanceRuns(renderItems);
+        for (int orderIndex = 0; orderIndex < _renderOrder.Count; orderIndex++)
         {
-            var (model, mesh, _, includeFog, blurTexture, textureMipmaps) = renderItems[index];
+            var (model, mesh, _, includeFog, blurTexture, textureMipmaps) = renderItems[_renderOrder[orderIndex].index];
             // Each transmissive surface refracts everything drawn before it, including earlier glass.
             if (mesh.UsesShaderGraphTransmission && !forceUnshaded)
                 CaptureShaderGraphBackdrop();
-            Gl.DepthMask(!mesh.RequiresTranslucentPass && !mesh.DepthWriteDisabled);
-            Gl.ColorMask(1, !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass,
-                !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass);
-            Gl.ColorMask(2, !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass,
-                !mesh.RequiresTranslucentPass, !mesh.RequiresTranslucentPass);
-            Mesh.ApplyBlendMode(Gl, mesh.BlendMode);
+            bool translucent = mesh.RequiresTranslucentPass;
+            bool depthMask = !translucent && !mesh.DepthWriteDisabled;
+            if (cachedDepthMask != depthMask)
+            {
+                Gl.DepthMask(depthMask);
+                cachedDepthMask = depthMask;
+            }
+            if (cachedColorMaskEnabled != !translucent)
+            {
+                Gl.ColorMask(1, !translucent, !translucent, !translucent, !translucent);
+                Gl.ColorMask(2, !translucent, !translucent, !translucent, !translucent);
+                cachedColorMaskEnabled = !translucent;
+            }
+            if (cachedBlendMode != mesh.BlendMode)
+            {
+                Mesh.ApplyBlendMode(Gl, mesh.BlendMode);
+                cachedBlendMode = mesh.BlendMode;
+            }
             SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allLights, cacheSelection: true);
-            RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded, includeFog, blurTexture, textureMipmaps, _preparedMipmaps);
+            // Consecutive identical meshes (same geometry and shading state) draw as one instanced call.
+            // Instances render in submission order, so blending and depth results are unchanged.
+            int runEnd = orderIndex + 1;
+            // The vertex-count test is the cheap early-out; most neighbours differ.
+            if (sharedLights && Mesh.InstancingEnabled && !forceUnshaded && runEnd < _renderOrder.Count &&
+                renderItems[_renderOrder[runEnd].index].mesh.Vertices.Count == mesh.Vertices.Count &&
+                mesh.IsInstanceable)
+            {
+                _instanceModels.Clear();
+                _instanceModels.Add(model);
+                while (runEnd < _renderOrder.Count)
+                {
+                    var next = renderItems[_renderOrder[runEnd].index];
+                    if (next.includeFog != includeFog || next.blurTexture != blurTexture ||
+                        next.textureMipmaps != textureMipmaps || !mesh.CanInstanceWith(next.mesh))
+                        break;
+                    _instanceModels.Add(next.model);
+                    runEnd++;
+                }
+            }
+            if (runEnd - orderIndex > 1)
+            {
+                Mesh.SetPendingInstances(_instanceModels);
+                try
+                {
+                    RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded, includeFog, blurTexture, textureMipmaps, _preparedMipmaps);
+                }
+                finally { Mesh.SetPendingInstances(null); }
+                FrameProfiler.Shared.Count(ProfileCounter.InstancedDrawCalls);
+                FrameProfiler.Shared.Count(ProfileCounter.InstancedMeshes, runEnd - orderIndex);
+                FrameProfiler.Shared.Count(ProfileCounter.MeshesSubmitted, runEnd - orderIndex - 1);
+                orderIndex = runEnd - 1;
+            }
+            else
+                RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded, includeFog, blurTexture, textureMipmaps, _preparedMipmaps);
+            if (mesh.DepthWriteDisabled || mesh.DepthTestDisabled)
+                cachedDepthMask = null;
         }
         Gl.DepthMask(true);
         Mesh.ShaderGraphSceneColorTexture = 0;
@@ -5730,6 +5812,70 @@ public partial class Viewport : UiPanel
         Gl.BlendEquation(GLEnum.FuncAdd);
         Gl.BlendFunc(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha);
         Gl.Disable(GLEnum.Blend);
+    }
+
+    private readonly Dictionary<object, List<int>> _instanceGroups = new();
+    private readonly List<List<int>> _instanceGroupPool = new();
+    private readonly List<(bool ignoresDepth, bool translucent, float depth, float distance, int index)> _gatheredOrder = new();
+    private bool[] _gathered = [];
+
+    /// <summary>
+    /// Moves each later mesh that can share an instanced draw with an earlier one to directly behind it.
+    /// </summary>
+    private void GatherInstanceRuns(
+        List<(mat4 model, Mesh mesh, float sortDepth, bool includeFog, bool blurTexture, bool textureMipmaps)> renderItems)
+    {
+        int count = _renderOrder.Count;
+        if (_gathered.Length < count) _gathered = new bool[Math.Max(count, _gathered.Length * 2)];
+        Array.Clear(_gathered, 0, count);
+        foreach (var list in _instanceGroups.Values) { list.Clear(); _instanceGroupPool.Add(list); }
+        _instanceGroups.Clear();
+        bool anyGroup = false;
+        for (int position = 0; position < count; position++)
+        {
+            var key = _renderOrder[position];
+            if (key.ignoresDepth || key.translucent) continue;
+            object? geometry = renderItems[key.index].mesh.InstanceGeometryKey;
+            if (geometry == null) continue;
+            if (!_instanceGroups.TryGetValue(geometry, out var positions))
+            {
+                if (_instanceGroupPool.Count > 0)
+                {
+                    positions = _instanceGroupPool[^1];
+                    _instanceGroupPool.RemoveAt(_instanceGroupPool.Count - 1);
+                }
+                else positions = new List<int>();
+                _instanceGroups[geometry] = positions;
+            }
+            positions.Add(position);
+            anyGroup |= positions.Count > 1;
+        }
+        if (!anyGroup) return;
+
+        _gatheredOrder.Clear();
+        for (int position = 0; position < count; position++)
+        {
+            if (_gathered[position]) continue;
+            var key = _renderOrder[position];
+            _gatheredOrder.Add(key);
+            if (key.ignoresDepth || key.translucent) continue;
+            var head = renderItems[key.index];
+            object? geometry = head.mesh.InstanceGeometryKey;
+            if (geometry == null || !_instanceGroups.TryGetValue(geometry, out var positions) || positions.Count < 2)
+                continue;
+            foreach (int other in positions)
+            {
+                if (other <= position || _gathered[other]) continue;
+                var item = renderItems[_renderOrder[other].index];
+                if (item.includeFog != head.includeFog || item.blurTexture != head.blurTexture ||
+                    item.textureMipmaps != head.textureMipmaps || !head.mesh.CanInstanceWith(item.mesh))
+                    continue;
+                _gathered[other] = true;
+                _gatheredOrder.Add(_renderOrder[other]);
+            }
+        }
+        _renderOrder.Clear();
+        _renderOrder.AddRange(_gatheredOrder);
     }
 
     private uint _graphBackdropFbo, _graphBackdropTex;
@@ -5741,6 +5887,7 @@ public partial class Viewport : UiPanel
     /// </summary>
     private unsafe void CaptureShaderGraphBackdrop()
     {
+        Mesh.InvalidateBatchTextureCache();
         Mesh.ShaderGraphSceneColorTexture = 0;
         Gl.GetInteger(GLEnum.DrawFramebufferBinding, out int drawFbo);
         if (drawFbo == 0) return;
@@ -5854,8 +6001,11 @@ public partial class Viewport : UiPanel
                 float dist = (worldPos - camPos).LengthSqr;
 
                 // Only this node's own Visuals — not its descendants.
-                foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly))
+                var visuals = obj.Visuals;
+                for (int visualIndex = 0; visualIndex < visuals.Count; visualIndex++)
                 {
+                    var mesh = visuals[visualIndex];
+                    if (mesh.PickOnly) continue;
                     mesh.DepthWriteDisabled = obj.IgnoreDepth;
                     mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
 
@@ -7799,14 +7949,18 @@ public partial class Viewport : UiPanel
             RenderMeshWithModeOverride(MainViewport.GroundPlane, MainViewport.GroundPlaneModel, view, proj, forceUnshaded);
         }
 
-        var renderItems = new List<(mat4, Mesh, float, bool, bool, bool)>();
-        var renderItemsNoAo = new List<(mat4, Mesh, float, bool, bool, bool)>();
+        // Presize from the previous frame so large scenes do not regrow these lists by doubling every frame.
+        // The combined list also receives the no-AO items later, so it is sized for both.
+        var renderItems = new List<(mat4, Mesh, float, bool, bool, bool)>(_lastPreviewItemCount + _lastPreviewNoAoCount);
+        var renderItemsNoAo = new List<(mat4, Mesh, float, bool, bool, bool)>(_lastPreviewNoAoCount);
         var overlays = new List<(mat4, Mesh)>();
         Frustum previewFrustum = Frustum.FromViewProj(proj * view);
         {
             using var collectionScope = FrameProfiler.Shared.Measure(ProfileStage.SceneCollection);
             CollectRenderPairs(MainViewport.SceneObjects, camPos, rasterRenderMode, previewFrustum, renderItems, renderItemsNoAo, overlays);
         }
+        _lastPreviewItemCount = renderItems.Count;
+        _lastPreviewNoAoCount = renderItemsNoAo.Count;
 
         bool splitAoObjects = rasterRenderMode == SceneRenderMode.Rendered &&
                               _ambientOcclusionShader != null &&

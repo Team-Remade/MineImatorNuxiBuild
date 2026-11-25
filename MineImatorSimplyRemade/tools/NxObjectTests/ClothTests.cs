@@ -1148,8 +1148,69 @@ internal static partial class Program
                     Near(surface.Vertices[vertex.Vertex], result[vertex.Vertex], "Dense plane pins remain fixed");
                 Check(result.All(p => float.IsFinite(p.x) && float.IsFinite(p.y) && float.IsFinite(p.z)), "Dense loader plane remains finite");
                 ClothCpuBentPlane(gl, texture);
+                CpuBentPlaneRefresh(gl, texture);
             }
             finally { gl.DeleteTexture(texture); }
+    }
+
+    /// <summary>
+    /// CPU-bent planes are rebuilt when their bend changes. A keyframe pass applies each axis separately, so
+    /// the rebuild is batched; an unchanged angle must not rebuild, and replaced meshes must release their GPU buffers.
+    /// </summary>
+    private static void CpuBentPlaneRefresh(Silk.NET.OpenGL.GL gl, uint texture)
+    {
+        var meshes = new HashSet<Mesh>();
+        try
+        {
+            MineImatorLoader.Instance.Initialize(gl);
+            var vao = typeof(Mesh).GetField("_vao", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            MiBoneSceneObject Build()
+            {
+                var shape = new MiShape { Type = "plane", ThreeD = true, Bend = true, From = [0, 0, 0], To = [8, 8, 0] };
+                var bone = BendBone("Refreshed CPU-bent plane", new(45, 0, 0));
+                bone.RegisterShapeData(new()
+                {
+                    PartName = "plane", ShapeIndex = 0, Shape = shape, Model = new() { TextureSize = [32, 32] },
+                    TextureId = texture, AccumulatedScale = vec3.Ones, ModelBendStyle = BendStyle.Realistic
+                });
+                bone.RegenerateMeshes(false);
+                meshes.UnionWith(bone.Visuals);
+                return bone;
+            }
+            var bone = Build();
+            var reference = Build();
+            var original = bone.Visuals.Single();
+            Check(original.GpuBend == null, "Refresh fixture uses the CPU-bent plane path");
+            Check((uint)vao.GetValue(original)! != 0, "A built mesh owns GPU buffers");
+
+            using (MiBoneSceneObject.BeginBendRefreshBatch())
+            {
+                bone.SetEditableBendAngle(new(20, 0, 0));
+                bone.SetEditableBendAngle(new(70, 0, 0));
+                Check(ReferenceEquals(original, bone.Visuals.Single()), "A bend batch defers the rebuild");
+            }
+            var rebuilt = bone.Visuals.Single();
+            meshes.UnionWith(bone.Visuals);
+            Check(!ReferenceEquals(original, rebuilt), "Ending the batch rebuilds the bent geometry");
+            Check((uint)vao.GetValue(original)! == 0, "The replaced mesh releases its GPU buffers");
+
+            reference.SetEditableBendAngle(new(70, 0, 0));
+            meshes.UnionWith(reference.Visuals);
+            var expected = reference.Visuals.Single();
+            Equal(expected.Vertices.Count, rebuilt.Vertices.Count, "Batched and immediate rebuilds have the same vertex count");
+            for (int i = 0; i < expected.Vertices.Count; i++)
+                Near(expected.Vertices[i], rebuilt.Vertices[i], "A batched rebuild matches an immediate one");
+
+            bone.SetEditableBendAngle(new(70, 0, 0));
+            Check(ReferenceEquals(rebuilt, bone.Visuals.Single()), "Setting the current bend again does not rebuild");
+            using (MiBoneSceneObject.BeginBendRefreshBatch())
+                bone.SetEditableBendAngle(new(70, 0, 0));
+            Check(ReferenceEquals(rebuilt, bone.Visuals.Single()), "A batch that leaves the bend unchanged does not rebuild");
+            bone.SetEditableBendAngle(new(10, 0, 0));
+            Check(!ReferenceEquals(rebuilt, bone.Visuals.Single()), "Changing the bend outside a batch still rebuilds");
+            meshes.UnionWith(bone.Visuals);
+        }
+        finally { foreach (var mesh in meshes) mesh.Dispose(); }
     }
 
     private static void ClothCpuBentPlane(Silk.NET.OpenGL.GL gl, uint texture)

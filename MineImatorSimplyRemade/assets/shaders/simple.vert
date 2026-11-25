@@ -14,6 +14,7 @@ layout (location = 7) in vec4 aInstanceM2;
 layout (location = 8) in vec4 aInstanceM3;
 
 uniform mat4  uMVP;
+uniform mat4  uViewProj;
 uniform mat4  uModel;
 uniform vec2  uTexOffset;
 uniform float uTexScaleV;
@@ -170,5 +171,5 @@ void main() {
     vec2 baseUv     = vec2(aTexCoord.x, aTexCoord.y * uTexScaleV + uTexOffset.y);
     vTexCoord       = applyUvTransform(baseUv);
     vShadowCoord    = uLightSpaceMatrix * worldPos;
-    gl_Position     = uMVP * pos;
+    gl_Position     = uUseInstancing ? uViewProj * worldPos : uMVP * pos;
 }

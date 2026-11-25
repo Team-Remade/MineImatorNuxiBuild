@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using System.Runtime.CompilerServices;
 using Silk.NET.OpenGL;
 using MineImatorSimplyRemade.core.mdl.material.materials;
 
@@ -19,6 +20,20 @@ public class Shader : IDisposable
     /// Cached uniform locations to avoid repeated glGetUniformLocation calls.
     /// </summary>
     private readonly Dictionary<string, int> _uniformLocations = new();
+
+    /// <summary>
+    /// Hash-free front cache keyed by string identity. Uniform names are almost always literals, so the
+    /// same instance is passed on every call and the string hashing of the value-keyed table is skipped.
+    /// Only interned strings are admitted, which keeps dynamically built names out of this table.
+    /// </summary>
+    private readonly Dictionary<string, int> _literalLocations = new(StringReferenceComparer.Instance);
+
+    private sealed class StringReferenceComparer : IEqualityComparer<string>
+    {
+        internal static readonly StringReferenceComparer Instance = new();
+        public bool Equals(string? x, string? y) => ReferenceEquals(x, y);
+        public int GetHashCode(string value) => RuntimeHelpers.GetHashCode(value);
+    }
 
     public Shader(GL gl)
     {
@@ -50,6 +65,7 @@ public class Shader : IDisposable
         {
             ShaderProgram = existingProgram;
             _uniformLocations.Clear();
+            _literalLocations.Clear();
             return;
         }
 
@@ -83,11 +99,20 @@ public class Shader : IDisposable
     /// </summary>
     public int GetUniformLocation(string name)
     {
-        if (_uniformLocations.TryGetValue(name, out int loc))
+        if (_literalLocations.TryGetValue(name, out int loc))
             return loc;
+        return ResolveUniformLocation(name);
+    }
 
-        loc = _gl.GetUniformLocation(ShaderProgram, name);
-        _uniformLocations[name] = loc;
+    private int ResolveUniformLocation(string name)
+    {
+        if (!_uniformLocations.TryGetValue(name, out int loc))
+        {
+            loc = _gl.GetUniformLocation(ShaderProgram, name);
+            _uniformLocations[name] = loc;
+        }
+        if (ReferenceEquals(string.IsInterned(name), name))
+            _literalLocations[name] = loc;
         return loc;
     }
 

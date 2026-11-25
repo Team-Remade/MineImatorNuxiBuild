@@ -3088,6 +3088,10 @@ public partial class Timeline : UiPanel
         var rotatedObjects = new HashSet<string>();
         var animatedModifiers = new Dictionary<(SceneObject Owner, string Id), SceneModifier>();
         var sampleFrames = new Dictionary<SceneObject, int>();
+        // Each bend axis is its own channel; refresh a bone's bend visuals once, after all of them are applied.
+        using var bendRefresh = MiBoneSceneObject.BeginBendRefreshBatch();
+        // Resolving each track's owner by searching the scene made every playback frame cost tracks x objects.
+        objectLookup ??= BuildObjectLookup();
         // Enable the optional endpoint before applying its animated components.
         foreach (var kvp in _propertyKeyframes.OrderBy(pair => pair.Key.EndsWith(".bone.end_enabled", StringComparison.Ordinal) ? 0 : 1))
         {
@@ -3100,7 +3104,7 @@ public partial class Timeline : UiPanel
             string propertyPath = kvp.Key[(dotIdx + 1)..];
             if (filter != null && !filter(propertyPath)) continue;
 
-            var target = objectLookup == null ? FindObjectById(objectId) : objectLookup.GetValueOrDefault(objectId);
+            var target = objectLookup.GetValueOrDefault(objectId);
             if (target == null) continue;
             if (!sampleFrames.TryGetValue(target, out int sampleFrame))
                 sampleFrames[target] = sampleFrame = GetFrameSkipSampleFrame(target);
@@ -5525,6 +5529,22 @@ public partial class Timeline : UiPanel
     }
 
     // ── Object lookup ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Every object by id, with the same precedence as <see cref="FindObjectById"/>: timeline rows first, then
+    /// the scene hierarchy in order.
+    /// </summary>
+    private Dictionary<string, SceneObject> BuildObjectLookup()
+    {
+        var lookup = new Dictionary<string, SceneObject>();
+        // Objects without an id can never match a track key, as in FindObjectById.
+        foreach (var row in _displayRows)
+            if (row.Object is { ObjectId: { } rowId } owner) lookup.TryAdd(rowId, owner);
+        if (Viewport != null)
+            foreach (var obj in CollectAllObjects(Viewport.SceneObjects))
+                if (obj.ObjectId is { } id) lookup.TryAdd(id, obj);
+        return lookup;
+    }
 
     private SceneObject? FindObjectById(string id)
     {

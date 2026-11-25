@@ -28,7 +28,7 @@ namespace MineImatorSimplyRemade.core.mdl;
 ///   6. Optionally set <see cref="TextureId"/> to a GL texture handle to
 ///      render with a texture instead of the flat <see cref="Albedo"/> colour.
 /// </summary>
-public class Mesh : IDisposable
+public partial class Mesh : IDisposable
 {
     private readonly GL _gl;
 
@@ -1420,8 +1420,9 @@ public class Mesh : IDisposable
     /// Must match <c>MAX_POINT_SHADOWS</c> in simple.frag.
     /// </summary>
     public static readonly uint[] PointShadowCubeTextures = new uint[8];
+    // Interned so Shader.GetUniformLocation resolves them through its identity-keyed fast path.
     private static readonly string[] PointShadowSamplerNames = Enumerable.Range(0, 8)
-        .Select(i => $"uPointShadowMaps[{i}]").ToArray();
+        .Select(i => string.Intern($"uPointShadowMaps[{i}]")).ToArray();
 
     /// <summary>
     /// Elapsed seconds since the last frame.  Set by the Viewport once per frame
@@ -1533,6 +1534,8 @@ public class Mesh : IDisposable
     public unsafe void Render(mat4 model, mat4 view, mat4 proj, HashSet<uint>? preparedMipmaps = null,
         bool useSceneLighting = true)
     {
+        var instances = _pendingInstances;
+        _pendingInstances = null;
         if (Vertices.Count == 0) return;
         if (_vao == 0 || _shader == null)
         {
@@ -1544,7 +1547,16 @@ public class Mesh : IDisposable
         if (HasShapeKeys)
             RefreshShapeKeyGeometry();
 
-        _gl.UseProgram(_shader.ShaderProgram);
+        // Inside a render batch only Mesh.Render selects programs, binds the scene buffer and changes
+        // culling, so those states are tracked instead of re-sent for every mesh.
+        bool inBatch = _renderBatchGl == _gl;
+        bool reuse = inBatch && BatchStateReuse;
+        uint program = _shader.ShaderProgram;
+        if (!reuse || _batchProgram != program)
+        {
+            _gl.UseProgram(program);
+            _batchProgram = reuse ? program : 0;
+        }
         var graph = CustomShader is { Enabled: true } custom ? custom.Program : null;
         bool useGraph = graph is { Error: null };
         SetUniformInt("uShaderGraphEnabled", useGraph ? 1 : 0);
@@ -1554,7 +1566,19 @@ public class Mesh : IDisposable
         ApplyBendUniforms(_shader);
 
         // Bind the shared scene UBO (initializes link on first use).
-        SceneUBO?.EnsureInitialized(_shader.ShaderProgram);
+        BatchProgramState? programState = reuse ? GetBatchProgramState(program) : null;
+        if (SceneUBO is { } sceneUbo)
+        {
+            if (programState == null)
+                sceneUbo.EnsureInitialized(program);
+            else if (programState.SceneUboGeneration != _uniformGeneration ||
+                     !ReferenceEquals(programState.SceneUbo, sceneUbo))
+            {
+                sceneUbo.EnsureInitialized(program);
+                programState.SceneUbo = sceneUbo;
+                programState.SceneUboGeneration = _uniformGeneration;
+            }
+        }
 
         // Combine into single MVP matrix exactly as the opengl-tutorial.org tutorial does:
         //   glm::mat4 mvp = Projection * View * Model;
@@ -1563,76 +1587,38 @@ public class Mesh : IDisposable
         mat4 mvp = proj * view * model;
         SetUniformMat4("uMVP",   mvp);
         SetUniformMat4("uModel", model);
+        if (instances != null)
+        {
+            SetUniformMat4("uViewProj", proj * view);
+            SetUniformBool("uUseInstancing", true);
+        }
 
         ApplySkinningUniforms(_shader);
 
-        SetUniformVec3("uAlbedo", RenderAlbedo);
-        SetUniformVec4("uBlendColor", BlendColor);
-        SetUniformVec4("uMixColor", MixColor);
-        _shader.SetColorAdjustments(ColorAdjustments);
-        SetUniformFloat("uAlpha", Alpha);
-        SetUniformBool("uPremultiplyBlend", BlendMode is MaterialBlendMode.Multiply or MaterialBlendMode.Screen);
-        SetUniformBool("uAlphaClipEnabled", AlphaMode is MaterialAlphaMode.Clip or MaterialAlphaMode.Hashed);
-        SetUniformBool("uAlphaHashed", AlphaMode == MaterialAlphaMode.Hashed);
-        SetUniformFloat("uAlphaClipThreshold", AlphaClipThreshold);
-        SetUniformBool("uEmissionEnabled", EmissionEnabled);
-        SetUniformBool("uEndPortalSurface", EndPortalSurface);
-        SetUniformFloat("uEffectTime", EffectTime);
+        // Also drives the glint texture binding below, so it is evaluated outside the reusable block.
         bool useGlintTexture = GlintMode != MaterialGlintMode.None && GlintTexture != 0 &&
                                TexCoords.Count == Vertices.Count;
-        SetUniformBool("uUseEnchantmentGlint", useGlintTexture);
-        SetUniformFloat("uGlintScale", GlintScale);
-        SetUniformFloat("uGlintSpeed", GlintSpeed);
-        SetUniformFloat("uGlintStrength", GlintStrength);
-        SetUniformVec3("uEmissionColor", EmissionColor);
-        SetUniformFloat("uEmissionEnergy", EmissionEnergy);
-        SetUniformBool("uEmissionIndirectOnly", EmissionIndirectOnly);
-        SetUniformFloat("uMetallic", Math.Clamp(DefaultMaterial.Metallic, 0f, 1f));
-        SetUniformFloat("uRoughness", Math.Clamp(Roughness, 0f, 1f));
+        // Every uniform in ApplyMaterialUniforms is a function of the mesh's material state (compared by
+        // MaterialStateEquals), the render-call inputs recorded below, or scene-wide statics that do not change
+        // inside a batch. A mesh matching the last one drawn with this program therefore re-sends none of them.
+        bool reuseMaterial = programState != null && programState.MaterialGeneration == _uniformGeneration &&
+                             GlintMode == MaterialGlintMode.None && programState.MaterialLighting == useSceneLighting &&
+                             programState.MaterialIncludeFog == IncludeInFog && programState.MaterialUnlit == Unlit &&
+                             programState.MaterialMesh is { } appliedMesh && appliedMesh.MaterialStateEquals(this);
+        if (!reuseMaterial)
+        {
+            ApplyMaterialUniforms(useSceneLighting, useGlintTexture);
+            if (programState != null)
+            {
+                programState.MaterialMesh = this;
+                programState.MaterialGeneration = _uniformGeneration;
+                programState.MaterialLighting = useSceneLighting;
+                programState.MaterialIncludeFog = IncludeInFog;
+                programState.MaterialUnlit = Unlit;
+            }
+        }
+        // Reset to false after every draw below, so it cannot be part of the reusable block.
         SetUniformBool("uPbrEnabled", PbrEnabled);
-        SetUniformFloat("uNormalStrength", Math.Max(NormalStrength, 0f));
-        SetUniformFloat("uOcclusionStrength", Math.Clamp(OcclusionStrength, 0f, 1f));
-        SetUniformFloat("uHeightScale", Math.Clamp(HeightScale, -0.1f, 0.1f));
-        SetUniformFloat("uSSS", Subsurface);
-        SetUniformVec3("uSSSRadius", SubsurfaceRadius);
-        SetUniformVec3("uSSSColor", SubsurfaceColor);
-        SetUniformFloat("uSSSHighlight", SubsurfaceHighlight);
-        SetUniformFloat("uSSSHighlightStrength", SubsurfaceHighlightStrength);
-        SetUniformBool("uSSSEnabled", useSceneLighting && SssEnabled);
-        SetUniformInt("uSSSBlurSamples", Math.Clamp(SssBlurSamples, 0, 32));
-        SetUniformFloat("uSSSStrength", Math.Max(SssStrength, 0f));
-        SetUniformFloat("uSSSDesaturation", Math.Clamp(SssDesaturation, 0f, 1f));
-        SetUniformFloat("uSSSColorThreshold", Math.Clamp(SssColorThreshold, 0f, 1f));
-        SetUniformVec3("uSSSGlobalRadius", new vec3(
-            Math.Max(SssRadius.x, 0f),
-            Math.Max(SssRadius.y, 0f),
-            Math.Max(SssRadius.z, 0f)));
-        SetUniformFloat("uSSSHighlightSize", Math.Max(SssHighlightSize, 0f));
-        SetUniformFloat("uSSSGlobalHighlightStrength", Math.Max(SssHighlightStrength, 0f));
-        SetUniformFloat("uSSSHighlightSharpness", Math.Max(SssHighlightSharpness, 0.01f));
-        SetUniformFloat("uSSSHighlightDesaturation", Math.Clamp(SssHighlightDesaturation, 0f, 1f));
-        SetUniformFloat("uSSSHighlightColorThreshold", Math.Clamp(SssHighlightColorThreshold, 0f, 1f));
-        SetUniformFloat("uSSSAbsorption", Math.Clamp(SssAbsorption, -0.95f, 0.95f));
-        SetUniformBool("uUseShadowMap", useSceneLighting && DirectionalShadowEnabled && ShadowsEnabled && !Unlit && ShadowMapTexture != 0);
-        SetUniformFloat("uShadowBlurStrength", ShadowBlurStrength);
-        SetUniformInt("uShadowDebugMode", ShadowDebugMode);
-
-        // The rest of the lighting data (uLightDir, uLightColor, uAmbient, fill
-        // lights, shadow flags, uLightSpaceMatrix, uShadowDebugMode) comes from
-        // the shared SceneData UBO uploaded once per frame by the Viewport.
-        SetUniformBool("uIsUnlit", Unlit);
-        SetUniformVec3("uCameraPosition", GlobalCameraPosition);
-        SetUniformBool("uFogEnabled", useSceneLighting && FogEnabled && IncludeInFog);
-        SetUniformVec3("uFogColor", FogColor);
-        SetUniformFloat("uFogDistance", FogDistance);
-        SetUniformFloat("uFogFadeSize", FogFadeSize);
-        SetUniformFloat("uFogHeight", FogHeight);
-        SetUniformBool("uHeightFogEnabled", useSceneLighting && HeightFogEnabled);
-        SetUniformVec3("uHeightFogColor", HeightFogColor);
-        SetUniformFloat("uHeightFogSize", HeightFogSize);
-        SetUniformFloat("uHeightFogOffset", HeightFogOffset);
-        SetUniformBool("uIndirectWorldEnabled", useSceneLighting && IndirectWorldEnabled && !Unlit);
-        SetUniformFloat("uIndirectWorldStrength", Math.Max(IndirectWorldStrength, 0f));
 
         if (useSceneLighting)
             UploadPointLights();
@@ -1677,18 +1663,32 @@ public class Mesh : IDisposable
         SetUniformVec4("uTextOutlineColor", TextMaskOutlineColor);
         if (useTexture)
         {
-            BindSurfaceTexture(TextureId, GLEnum.Texture0);
+            // Consecutive meshes sharing a texture and filter state keep it bound within a render batch.
+            var key = (TextureId, TextureMipmaps, BlurTexture);
+            if (!inBatch || _batchTexture0 != key)
+            {
+                BindSurfaceTexture(TextureId, GLEnum.Texture0);
+                _batchTexture0 = inBatch ? key : default;
+            }
             SetUniformInt("uTexture", 0);
         }
         if (useNormalTexture)
             BindSurfaceTexture(NormalTexture, GLEnum.Texture10);
         if (useEmissionTexture)
             BindSurfaceTexture(EmissionTexture, GLEnum.Texture11);
-        _gl.ActiveTexture(GLEnum.Texture13);
-        _gl.BindTexture(GLEnum.Texture2D, 0);
-        _gl.BindSampler(13, 0);
+        // Unit 13 is left unbound after every draw, so inside a batch it only needs clearing once.
+        if (!reuse || !_batchSurfaceUnitClean)
+        {
+            _gl.ActiveTexture(GLEnum.Texture13);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+            _gl.BindSampler(13, 0);
+            _batchSurfaceUnitClean = reuse;
+        }
         if (useSurfaceTexture)
+        {
             BindSurfaceTexture(SurfaceTexture, GLEnum.Texture13);
+            _batchSurfaceUnitClean = false;
+        }
         if (useGlintTexture)
         {
             BindSurfaceTexture(GlintTexture, GLEnum.Texture14, blur: true);
@@ -1756,7 +1756,10 @@ public class Mesh : IDisposable
             _gl.ActiveTexture(GLEnum.Texture0);
         }
 
-        ApplyFaceCulling();
+        if (reuse)
+            ApplyBatchFaceCulling();
+        else
+            ApplyFaceCulling();
 
         // Overlay meshes render on top of all geometry: depth test off, depth writes off.
         if (DepthTestDisabled)
@@ -1769,14 +1772,25 @@ public class Mesh : IDisposable
             _gl.DepthMask(false);
         }
 
-        _gl.BindVertexArray(_vao);
+        // Shape keys rewrite buffers through the bound vertex array, so they never reuse the tracked binding.
+        if (!reuse || _batchVao != _vao || HasShapeKeys)
+        {
+            _gl.BindVertexArray(_vao);
+            _batchVao = reuse ? _vao : 0;
+        }
 
-        if (Indices != null && _ebo != 0)
+        if (instances != null)
+        {
+            DrawInstanced(instances);
+            SetUniformBool("uUseInstancing", false);
+        }
+        else if (Indices != null && _ebo != 0)
             _gl.DrawElements(GLEnum.Triangles, (uint)Indices.Length, GLEnum.UnsignedInt, (void*)0);
         else
             _gl.DrawArrays(GLEnum.Triangles, 0, (uint)Vertices.Count);
 
-        _gl.BindVertexArray(0);
+        if (!reuse)
+            _gl.BindVertexArray(0);
 
         // Restore depth state after overlay draw.
         if (DepthTestDisabled)
@@ -1790,26 +1804,32 @@ public class Mesh : IDisposable
             _gl.DepthMask(true);
         }
 
-        RestoreFaceCulling();
+        if (!reuse)
+            RestoreFaceCulling();
 
-        if (useNormalTexture)
+        // Inside a render batch the remaining texture units are unbound once when the batch ends.
+        if (useNormalTexture && !inBatch)
         {
             _gl.ActiveTexture(GLEnum.Texture10);
             _gl.BindTexture(GLEnum.Texture2D, 0);
         }
-        if (useEmissionTexture)
+        if (useEmissionTexture && !inBatch)
         {
             _gl.ActiveTexture(GLEnum.Texture11);
             _gl.BindTexture(GLEnum.Texture2D, 0);
         }
-        if (useGlintTexture)
+        if (useGlintTexture && !inBatch)
         {
             _gl.ActiveTexture(GLEnum.Texture14);
             _gl.BindTexture(GLEnum.Texture2D, 0);
         }
-        _gl.ActiveTexture(GLEnum.Texture13);
-        _gl.BindTexture(GLEnum.Texture2D, 0);
-        _gl.BindSampler(13, 0);
+        if (!reuse || !_batchSurfaceUnitClean)
+        {
+            _gl.ActiveTexture(GLEnum.Texture13);
+            _gl.BindTexture(GLEnum.Texture2D, 0);
+            _gl.BindSampler(13, 0);
+            _batchSurfaceUnitClean = reuse;
+        }
         SetUniformBool("uUseSurfaceTexture", false);
         SetUniformBool("uPbrEnabled", false);
         if (useGraph)
@@ -1819,27 +1839,27 @@ public class Mesh : IDisposable
             _gl.ActiveTexture(GLEnum.Texture0 + ShaderGraphSceneColorUnit);
             _gl.BindTexture(GLEnum.Texture2D, 0);
         }
-        if (useAlphaMask)
+        if (useAlphaMask && !inBatch)
         {
             _gl.ActiveTexture(GLEnum.Texture15);
             _gl.BindTexture(GLEnum.Texture2D, 0);
         }
         _gl.ActiveTexture(GLEnum.Texture0);
 
-        if (useTexture)
+        if (useTexture && !inBatch)
         {
             _gl.ActiveTexture(GLEnum.Texture0);
             _gl.BindTexture(GLEnum.Texture2D, 0);
         }
 
-        if (ShadowsEnabled && !Unlit && ShadowMapTexture != 0)
+        if (ShadowsEnabled && !Unlit && ShadowMapTexture != 0 && !inBatch)
         {
             _gl.ActiveTexture(GLEnum.Texture1);
             _gl.BindTexture(GLEnum.Texture2D, 0);
             _gl.ActiveTexture(GLEnum.Texture0);
         }
 
-        if (!Unlit)
+        if (!Unlit && !inBatch)
         {
             for (int i = 0; i < PointShadowCubeTextures.Length; i++)
             {
@@ -1853,6 +1873,80 @@ public class Mesh : IDisposable
         }
     }
 
+    private void ApplyMaterialUniforms(bool useSceneLighting, bool useGlintTexture)
+    {
+        SetUniformVec3("uAlbedo", RenderAlbedo);
+        SetUniformVec4("uBlendColor", BlendColor);
+        SetUniformVec4("uMixColor", MixColor);
+        var colorAdjustments = ColorAdjustments;
+        SetUniformVec3("uMultiplyHsv", colorAdjustments.MultiplyHsv);
+        SetUniformVec3("uAddRgb", colorAdjustments.AddRgb);
+        SetUniformVec3("uAddHsv", colorAdjustments.AddHsv);
+        SetUniformVec3("uSubtractRgb", colorAdjustments.SubtractRgb);
+        SetUniformVec3("uSubtractHsv", colorAdjustments.SubtractHsv);
+        SetUniformFloat("uAlpha", Alpha);
+        SetUniformBool("uPremultiplyBlend", BlendMode is MaterialBlendMode.Multiply or MaterialBlendMode.Screen);
+        SetUniformBool("uAlphaClipEnabled", AlphaMode is MaterialAlphaMode.Clip or MaterialAlphaMode.Hashed);
+        SetUniformBool("uAlphaHashed", AlphaMode == MaterialAlphaMode.Hashed);
+        SetUniformFloat("uAlphaClipThreshold", AlphaClipThreshold);
+        SetUniformBool("uEmissionEnabled", EmissionEnabled);
+        SetUniformBool("uEndPortalSurface", EndPortalSurface);
+        SetUniformFloat("uEffectTime", EffectTime);
+        SetUniformBool("uUseEnchantmentGlint", useGlintTexture);
+        SetUniformFloat("uGlintScale", GlintScale);
+        SetUniformFloat("uGlintSpeed", GlintSpeed);
+        SetUniformFloat("uGlintStrength", GlintStrength);
+        SetUniformVec3("uEmissionColor", EmissionColor);
+        SetUniformFloat("uEmissionEnergy", EmissionEnergy);
+        SetUniformBool("uEmissionIndirectOnly", EmissionIndirectOnly);
+        SetUniformFloat("uMetallic", Math.Clamp(DefaultMaterial.Metallic, 0f, 1f));
+        SetUniformFloat("uRoughness", Math.Clamp(Roughness, 0f, 1f));
+        SetUniformFloat("uNormalStrength", Math.Max(NormalStrength, 0f));
+        SetUniformFloat("uOcclusionStrength", Math.Clamp(OcclusionStrength, 0f, 1f));
+        SetUniformFloat("uHeightScale", Math.Clamp(HeightScale, -0.1f, 0.1f));
+        SetUniformFloat("uSSS", Subsurface);
+        SetUniformVec3("uSSSRadius", SubsurfaceRadius);
+        SetUniformVec3("uSSSColor", SubsurfaceColor);
+        SetUniformFloat("uSSSHighlight", SubsurfaceHighlight);
+        SetUniformFloat("uSSSHighlightStrength", SubsurfaceHighlightStrength);
+        SetUniformBool("uSSSEnabled", useSceneLighting && SssEnabled);
+        SetUniformInt("uSSSBlurSamples", Math.Clamp(SssBlurSamples, 0, 32));
+        SetUniformFloat("uSSSStrength", Math.Max(SssStrength, 0f));
+        SetUniformFloat("uSSSDesaturation", Math.Clamp(SssDesaturation, 0f, 1f));
+        SetUniformFloat("uSSSColorThreshold", Math.Clamp(SssColorThreshold, 0f, 1f));
+        SetUniformVec3("uSSSGlobalRadius", new vec3(
+            Math.Max(SssRadius.x, 0f),
+            Math.Max(SssRadius.y, 0f),
+            Math.Max(SssRadius.z, 0f)));
+        SetUniformFloat("uSSSHighlightSize", Math.Max(SssHighlightSize, 0f));
+        SetUniformFloat("uSSSGlobalHighlightStrength", Math.Max(SssHighlightStrength, 0f));
+        SetUniformFloat("uSSSHighlightSharpness", Math.Max(SssHighlightSharpness, 0.01f));
+        SetUniformFloat("uSSSHighlightDesaturation", Math.Clamp(SssHighlightDesaturation, 0f, 1f));
+        SetUniformFloat("uSSSHighlightColorThreshold", Math.Clamp(SssHighlightColorThreshold, 0f, 1f));
+        SetUniformFloat("uSSSAbsorption", Math.Clamp(SssAbsorption, -0.95f, 0.95f));
+        SetUniformBool("uUseShadowMap", useSceneLighting && DirectionalShadowEnabled && ShadowsEnabled && !Unlit && ShadowMapTexture != 0);
+        SetUniformFloat("uShadowBlurStrength", ShadowBlurStrength);
+        SetUniformInt("uShadowDebugMode", ShadowDebugMode);
+
+        // The rest of the lighting data (uLightDir, uLightColor, uAmbient, fill
+        // lights, shadow flags, uLightSpaceMatrix, uShadowDebugMode) comes from
+        // the shared SceneData UBO uploaded once per frame by the Viewport.
+        SetUniformBool("uIsUnlit", Unlit);
+        SetUniformVec3("uCameraPosition", GlobalCameraPosition);
+        SetUniformBool("uFogEnabled", useSceneLighting && FogEnabled && IncludeInFog);
+        SetUniformVec3("uFogColor", FogColor);
+        SetUniformFloat("uFogDistance", FogDistance);
+        SetUniformFloat("uFogFadeSize", FogFadeSize);
+        SetUniformFloat("uFogHeight", FogHeight);
+        SetUniformBool("uHeightFogEnabled", useSceneLighting && HeightFogEnabled);
+        SetUniformVec3("uHeightFogColor", HeightFogColor);
+        SetUniformFloat("uHeightFogSize", HeightFogSize);
+        SetUniformFloat("uHeightFogOffset", HeightFogOffset);
+        SetUniformBool("uIndirectWorldEnabled", useSceneLighting && IndirectWorldEnabled && !Unlit);
+        SetUniformFloat("uIndirectWorldStrength", Math.Max(IndirectWorldStrength, 0f));
+    }
+
+
     private void ApplyFaceCulling()
     {
         // Double-sided is a material property and therefore takes precedence:
@@ -1865,6 +1959,26 @@ public class Mesh : IDisposable
 
         _gl.Enable(GLEnum.CullFace);
         _gl.CullFace(CullFrontFaces ? GLEnum.Front : GLEnum.Back);
+    }
+
+    /// <summary>
+    /// <see cref="ApplyFaceCulling"/> for render batches: only sends the state when it differs from what the
+    /// previous mesh left behind. The batch restores the default culling once when it ends.
+    /// </summary>
+    private void ApplyBatchFaceCulling()
+    {
+        int mode = DoubleSided ? 0 : CullFrontFaces ? 1 : 2;
+        if (_batchCull == mode) return;
+        if (mode == 0)
+        {
+            _gl.Disable(GLEnum.CullFace);
+        }
+        else
+        {
+            if (_batchCull is -1 or 0) _gl.Enable(GLEnum.CullFace);
+            _gl.CullFace(mode == 1 ? GLEnum.Front : GLEnum.Back);
+        }
+        _batchCull = mode;
     }
 
     private void RestoreFaceCulling()
@@ -2074,15 +2188,38 @@ public class Mesh : IDisposable
     private static GL? _renderBatchGl;
     private static GL? _uniformCacheGl;
     private static long _uniformGeneration;
-    private static readonly Dictionary<uint, BatchUniformState> BatchUniforms = new();
-    private static BatchUniformState? _currentBatchUniforms;
+    private static readonly Dictionary<uint, BatchProgramState> BatchUniforms = new();
+    private static BatchProgramState? _currentBatchUniforms;
 
-    private sealed class BatchUniformState(uint program)
+    /// <summary>
+    /// Lets render batches skip GL state and material uniforms that the previous mesh already left in place.
+    /// Turn off to compare against sending everything for every mesh.
+    /// </summary>
+    public static bool BatchStateReuse = true;
+
+    // Render state that Mesh.Render owns inside a batch. Reset by BeginRenderBatch, so the first mesh of
+    // every batch re-establishes it, and by InvalidateBatchTextureCache for outside code that changes GL state.
+    private static uint _batchProgram;
+    private static uint _batchVao;
+    private static int _batchCull = -1; // -1 unknown, 0 double-sided, 1 cull front faces, 2 cull back faces
+    private static bool _batchSurfaceUnitClean;
+
+    private sealed class BatchProgramState(uint program)
     {
         internal readonly uint Program = program;
         internal vec4[] Vectors = [];
         internal int[] Integers = [];
         internal long[] Generations = [];
+
+        // Scene uniform buffer link, once per program and batch.
+        internal long SceneUboGeneration;
+        internal SceneUniformBuffer? SceneUbo;
+
+        // The mesh whose material uniforms this program currently holds, with the render-call inputs
+        // that are not part of the mesh's own state.
+        internal long MaterialGeneration;
+        internal Mesh? MaterialMesh;
+        internal bool MaterialLighting, MaterialIncludeFog, MaterialUnlit;
 
         internal void EnsureCapacity(int location)
         {
@@ -2110,8 +2247,51 @@ public class Mesh : IDisposable
         }
         _uniformGeneration++;
         _currentBatchUniforms = null;
+        _batchTexture0 = default;
+        ResetBatchRenderState();
         _renderBatchGl = gl;
         return new RenderBatchScope(_uniformGeneration);
+    }
+
+    private static void ResetBatchRenderState()
+    {
+        _batchProgram = 0;
+        _batchVao = 0;
+        _batchCull = -1;
+        _batchSurfaceUnitClean = false;
+        // Forces the scene buffer link and material uniforms to be re-sent by the next mesh.
+        foreach (var state in BatchUniforms.Values)
+        {
+            state.SceneUboGeneration = 0;
+            state.SceneUbo = null;
+            state.MaterialGeneration = 0;
+            state.MaterialMesh = null;
+        }
+    }
+
+    private static (uint, bool, bool) _batchTexture0;
+
+    /// <summary>Forgets cached texture bindings after code outside Mesh.Render rebinds texture units mid-batch.</summary>
+    public static void InvalidateBatchTextureCache()
+    {
+        _batchTexture0 = default;
+        if (_renderBatchGl != null) ResetBatchRenderState();
+    }
+
+    private static unsafe void UnbindBatchTextures(GL gl)
+    {
+        foreach (int unit in new[] { 0, 1, 10, 11, 14, 15 })
+        {
+            gl.ActiveTexture((GLEnum)((int)GLEnum.Texture0 + unit));
+            gl.BindTexture(GLEnum.Texture2D, 0);
+        }
+        for (int i = 0; i < PointShadowCubeTextures.Length; i++)
+        {
+            gl.ActiveTexture((GLEnum)((int)GLEnum.Texture0 + 2 + i));
+            gl.BindTexture(GLEnum.TextureCubeMap, 0);
+        }
+        gl.ActiveTexture(GLEnum.Texture0);
+        _batchTexture0 = default;
     }
 
     public readonly struct RenderBatchScope : IDisposable
@@ -2120,19 +2300,31 @@ public class Mesh : IDisposable
         internal RenderBatchScope(long generation) => _generation = generation;
         public void Dispose()
         {
-            if (_generation == _uniformGeneration) _renderBatchGl = null;
+            if (_generation != _uniformGeneration || _renderBatchGl == null) return;
+            var gl = _renderBatchGl;
+            _renderBatchGl = null;
+            UnbindBatchTextures(gl);
+            // Render skips these per-mesh resets inside a batch; do them once here.
+            gl.BindVertexArray(0);
+            gl.Enable(GLEnum.CullFace);
+            gl.CullFace(GLEnum.Back);
+            ResetBatchRenderState();
         }
     }
 
-    private static BatchUniformState GetBatchUniforms(uint program, int location)
+    private static BatchProgramState GetBatchProgramState(uint program)
     {
         var state = _currentBatchUniforms;
-        if (state == null || state.Program != program)
-        {
-            if (!BatchUniforms.TryGetValue(program, out state))
-                BatchUniforms[program] = state = new BatchUniformState(program);
-            _currentBatchUniforms = state;
-        }
+        if (state != null && state.Program == program) return state;
+        if (!BatchUniforms.TryGetValue(program, out state))
+            BatchUniforms[program] = state = new BatchProgramState(program);
+        _currentBatchUniforms = state;
+        return state;
+    }
+
+    private static BatchProgramState GetBatchUniforms(uint program, int location)
+    {
+        var state = GetBatchProgramState(program);
         state.EnsureCapacity(location);
         return state;
     }
