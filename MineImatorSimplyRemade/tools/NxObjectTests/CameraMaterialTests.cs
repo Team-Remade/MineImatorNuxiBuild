@@ -294,6 +294,7 @@ internal static partial class Program
                 var burnCamera = new CameraSceneObject();
                 burnCamera.AddEffect(CameraEffectType.ColorCorrection);
                 var burnSettings = burnCamera.Effects[0].ColorCorrection;
+                Check(input.SequenceEqual(Render(burnCamera)), "White burn color is neutral at zero percentage");
                 burnSettings.ColorBurn = 100f;
                 byte[] whiteBurn = Render(burnCamera);
                 foreach (int channel in new[] { 0, 1, 2 })
@@ -302,21 +303,29 @@ internal static partial class Program
                     float expected = (1f - Math.Min(1f, (1f - source) / source)) * 255f;
                     Check(Math.Abs(whiteBurn[channel] - expected) <= 1f, "White burn preserves original formula");
                 }
+                burnSettings.ColorBurn = 0f;
                 burnSettings.BurnColorR = 0.5f;
                 burnSettings.BurnColorG = 0f;
-                burnSettings.BurnColorB = 0f;
+                burnSettings.BurnColorB = 1f;
                 byte[] customBurn = Render(burnCamera);
-                Check(Math.Abs(customBurn[0] - 115) <= 1, "Custom burn uses red tint in blend divisor");
-                Equal((byte)0, customBurn[1], "Zero burn green is finite black");
-                Equal((byte)0, customBurn[2], "Zero burn blue is finite black");
+                Check(Math.Abs(customBurn[0] - 145) <= 1, "RGB burn uses the Mine-imator color divisor at zero percentage");
+                Equal((byte)0, customBurn[1], "Zero RGB burn divisor is finite black");
+                Check(Math.Abs(customBurn[2] - input[2]) <= 1, "Unit RGB burn divisor preserves the source channel");
                 Check(customBurn.SequenceEqual(Render(burnCamera)), "Custom burn is repeatable");
+                byte originalGreen = input[1];
+                input[1] = 255;
+                Equal((byte)0, Render(burnCamera)[1], "Zero RGB divisor maps white input to finite black");
+                input[1] = originalGreen;
+                burnSettings.BurnColorR = 1f;
+                burnSettings.BurnColorG = 1f;
+                burnSettings.BurnColorB = 1f;
                 burnSettings.ColorBurn = 50f;
                 byte[] partialBurn = Render(burnCamera);
                 for (int channel = 0; channel < 3; channel++)
-                    Check(Math.Abs(partialBurn[channel] - (input[channel] + customBurn[channel]) * 0.5f) <= 1f,
-                        "Burn strength interpolates custom color");
+                    Check(Math.Abs(partialBurn[channel] - (input[channel] + whiteBurn[channel]) * 0.5f) <= 1f,
+                        "Burn strength interpolates independently from RGB color");
                 burnSettings.ColorBurn = 0f;
-                Check(input.SequenceEqual(Render(burnCamera)), "Zero strength ignores custom burn color");
+                Check(input.SequenceEqual(Render(burnCamera)), "Zero percentage and white RGB remain neutral");
 
                 viewport.PropertiesPanel = new PropertiesPanel
                 {

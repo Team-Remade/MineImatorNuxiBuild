@@ -914,6 +914,14 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Item options", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--items-graphics", StringComparer.Ordinal))
             tests = [("Item options spawned settings, live 3D geometry, duplication and undo", ItemOptionsGraphics)];
+        int miBenchmark = Array.IndexOf(args, "--mi-benchmark-project");
+        if (miBenchmark >= 0)
+        {
+            if (miBenchmark + 1 >= args.Length)
+                throw new ArgumentException("--mi-benchmark-project requires a .miproject path.");
+            string path = args[miBenchmark + 1];
+            tests = [("MI import benchmark project camera burn color", _ => MiImportProjectBurnColor(path))];
+        }
         int failures = 0;
         foreach (var test in tests)
         {

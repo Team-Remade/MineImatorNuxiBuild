@@ -61,6 +61,9 @@ void main() {
     color = shiftHue(color, finiteOr(uHue, 0.0));
 
     color = mix(color, 1.0 - color, clamp(finiteOr(uInvertStrength, 0.0) / 100.0, 0.0, 1.0));
+    vec3 burnDivisor = clamp(uBurnColor, 0.0, 1.0);
+    vec3 colorBurn = 1.0 - (1.0 - color) / max(burnDivisor, vec3(0.000001));
+    color = mix(colorBurn, vec3(0.0), lessThanEqual(burnDivisor, vec3(0.0)));
     float burn = clamp(finiteOr(uColorBurn, 0.0) / 100.0, 0.0, 1.0);
     if (burn > 0.0) {
         vec3 base = clamp(color, 0.0, 1.0);

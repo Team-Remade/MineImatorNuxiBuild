@@ -430,16 +430,95 @@ internal static partial class Program
                "CAM_BRIGHTNESS":0.1,"CAM_COLOR_BURN":"#800000","CAM_VHS":true},
              "keyframes":{"0":{},"10":{"CAM_SHAKE_MODE":0,"CAM_SHAKE_STRENGTH_X":90,
                  "CAM_SHAKE_STRENGTH_Z":180,"CAM_BLACK_LINES_SIZE":0.9,
-                 "CAM_BLACK_LINES_ROTATION":60,"CAM_BLACK_LINES_OFFSET_Y":10}}}]}
+                 "CAM_BLACK_LINES_ROTATION":60,"CAM_BLACK_LINES_OFFSET_Y":10,
+                 "CAM_COLOR_BURN":"#0080FF"},"20":{}}}]}
             """);
         var warnings = new List<string>();
-        var camera = (CameraSceneObject)new MineImatorLoader().CreateSceneFromMiObject(source, warning: warnings.Add).Children.Single();
+        var root = new MineImatorLoader().CreateSceneFromMiObject(source, warning: warnings.Add);
+        var camera = (CameraSceneObject)root.Children.Single();
         var correction = camera.Effects.Single(e => e.Type == CameraEffectType.ColorCorrection).ColorCorrection;
         Near(125, correction.Contrast, "Source contrast is offset around one");
         Near(50, correction.Hue, "Source hue is expressed in hundreds of degrees");
-        Near(100, correction.ColorBurn, "Source color burn is applied with its burn color");
+        Near(0, correction.ColorBurn, "Source color burn does not set the percentage control");
         Near(0.5019608f, correction.BurnColorR, "Source color burn color red");
         Near(0, correction.BurnColorG, "Source color burn color green");
+        string burnPath = $"camera.effect.{camera.Effects.IndexOf(camera.Effects.Single(e => e.Type == CameraEffectType.ColorCorrection))}.color_correction.";
+        Check(!camera.Keyframes.ContainsKey(burnPath + "color_burn"), "Source burn color does not create a burn percentage track");
+        foreach (var (component, initial, animated) in new[]
+                 {
+                     ("r", 128f / 255, 0f), ("g", 0f, 128f / 255), ("b", 0f, 1f)
+                 })
+        {
+            var keys = camera.Keyframes[burnPath + "burn_color." + component];
+            Equal(3, keys.Count, "Burn color keys include animated and default poses for " + component);
+            Near(initial, Convert.ToSingle(keys[0].Value), "Initial burn color " + component);
+            Near(animated, Convert.ToSingle(keys[1].Value), "Animated burn color " + component);
+            Near(initial, Convert.ToSingle(keys[2].Value), "Sparse burn color restores its source default " + component);
+        }
+        var timeline = new Timeline { Viewport = new Viewport() };
+        timeline.Viewport.SceneObjects.Add(root);
+        timeline.LoadKeyframesForAllObjects(root.GetAllDescendants());
+        Seek(5);
+        Near(64f / 255, correction.BurnColorR, "Burn color interpolates red");
+        Near(64f / 255, correction.BurnColorG, "Burn color interpolates green");
+        Near(0.5f, correction.BurnColorB, "Burn color interpolates blue");
+        Seek(20);
+        Near(0.5019608f, correction.BurnColorR, "Sparse burn color returns to source red");
+        Near(0, correction.BurnColorG, "Sparse burn color returns to source green");
+        Near(0, correction.BurnColorB, "Sparse burn color returns to source blue");
+        Seek(5);
+        Near(64f / 255, correction.BurnColorG, "Backward seek restores interpolated burn color");
+        Seek(0);
+        Near(0, correction.ColorBurn, "Burn percentage remains disabled while seeking");
+        var (persisted, _) = f.Roundtrip(camera);
+        Near(0, persisted.Root.CameraEffects!.Single(e => e.Type == CameraEffectType.ColorCorrection).ColorCorrection.ColorBurn,
+            "Burn percentage remains disabled after persistence");
+        Equal(3, persisted.Root.Keyframes![burnPath + "burn_color.r"].Count, "Burn color animation persists");
+        var noBurnRoot = new MineImatorLoader().CreateSceneFromMiObject(MiDocument("""
+            {"timelines":[{"id":"camera","type":"camera",
+             "default_values":{"CAM_COLOR_CORRECTION":true},"keyframes":{"0":{}}}]}
+            """));
+        var noBurnCamera = (CameraSceneObject)noBurnRoot.Children.Single();
+        Near(0, noBurnCamera.Effects.Single(e => e.Type == CameraEffectType.ColorCorrection).ColorCorrection.ColorBurn,
+            "Missing source burn color keeps native burn disabled");
+
+        var benchmarkRoot = new MineImatorLoader().CreateSceneFromMiObject(MiDocument("""
+            {"timelines":[{"id":"camera","type":"camera",
+             "default_values":{"CAM_COLOR_CORRECTION":true},
+             "keyframes":{"0":{"CAM_COLOR_BURN":"#EEF6FF"},
+               "10":{"CAM_COLOR_BURN":"#FFF8EE"},
+               "20":{"CAM_COLOR_BURN":"#EEF6FF"}}}]}
+            """));
+        var benchmarkCamera = (CameraSceneObject)benchmarkRoot.Children.Single();
+        var benchmarkCorrection = benchmarkCamera.Effects.Single(e => e.Type == CameraEffectType.ColorCorrection).ColorCorrection;
+        string benchmarkPath = "camera.effect.0.color_correction.";
+        Near(0, benchmarkCorrection.ColorBurn, "Key-only benchmark colors do not set burn percentage");
+        Check(!benchmarkCamera.Keyframes.ContainsKey(benchmarkPath + "color_burn"),
+            "Key-only benchmark colors do not create a percentage track");
+        foreach (var (component, first, second) in new[]
+                 {
+                     ("r", 238f / 255, 1f), ("g", 246f / 255, 248f / 255), ("b", 1f, 238f / 255)
+                 })
+        {
+            var keys = benchmarkCamera.Keyframes[benchmarkPath + "burn_color." + component];
+            Equal(3, keys.Count, "Key-only benchmark color keys survive for " + component);
+            Near(first, Convert.ToSingle(keys[0].Value), "Benchmark initial burn color " + component);
+            Near(second, Convert.ToSingle(keys[1].Value), "Benchmark animated burn color " + component);
+            Near(first, Convert.ToSingle(keys[2].Value), "Benchmark final burn color " + component);
+        }
+        var benchmarkTimeline = new Timeline { Viewport = new Viewport() };
+        benchmarkTimeline.Viewport.SceneObjects.Add(benchmarkRoot);
+        benchmarkTimeline.LoadKeyframesForAllObjects(benchmarkRoot.GetAllDescendants());
+        SeekBenchmark(5);
+        Near(246.5f / 255, benchmarkCorrection.BurnColorR, "Key-only benchmark red interpolates");
+        Near(247f / 255, benchmarkCorrection.BurnColorG, "Key-only benchmark green interpolates");
+        Near(246.5f / 255, benchmarkCorrection.BurnColorB, "Key-only benchmark blue interpolates");
+        SeekBenchmark(0);
+        var (benchmarkPersisted, _) = f.Roundtrip(benchmarkCamera);
+        Near(0, benchmarkPersisted.Root.CameraEffects!.Single(e => e.Type == CameraEffectType.ColorCorrection).ColorCorrection.ColorBurn,
+            "Key-only benchmark keeps percentage disabled after persistence");
+        Equal(3, benchmarkPersisted.Root.Keyframes![benchmarkPath + "burn_color.r"].Count,
+            "Key-only benchmark RGB animation persists");
         Near(2, camera.Effects.Single(e => e.Type == CameraEffectType.HeatDistort).HeatDistort.Strength,
             "Heat strength is already a percentage in both renderers");
         var aberration = camera.Effects.Single(e => e.Type == CameraEffectType.ChromaticAberration).ChromaticAberration;
@@ -453,18 +532,72 @@ internal static partial class Program
         Near(new vec3(1, 2, 3), shake.Shake.Strength, "Positional shake units and axes");
         Near(new vec3(2, 3, 4), shake.Shake.Speed, "Shake noise axes follow strength axes");
         int shakeIndex = camera.Effects.IndexOf(shake), barsIndex = camera.Effects.IndexOf(bars);
-        Near(MathF.PI, Convert.ToSingle(camera.Keyframes[$"camera.effect.{shakeIndex}.shake.strength.x"][^1].Value),
+        Near(MathF.PI, Convert.ToSingle(camera.Keyframes[$"camera.effect.{shakeIndex}.shake.strength.x"].Single(k => k.Frame == 10).Value),
             "Source yaw strength becomes radians");
-        Near(MathF.PI / 2, Convert.ToSingle(camera.Keyframes[$"camera.effect.{shakeIndex}.shake.strength.y"][^1].Value),
+        Near(MathF.PI / 2, Convert.ToSingle(camera.Keyframes[$"camera.effect.{shakeIndex}.shake.strength.y"].Single(k => k.Frame == 10).Value),
             "Source pitch strength becomes radians");
-        Near(0, Convert.ToSingle(camera.Keyframes[$"camera.effect.{shakeIndex}.shake.strength.z"][^1].Value),
+        Near(0, Convert.ToSingle(camera.Keyframes[$"camera.effect.{shakeIndex}.shake.strength.z"].Single(k => k.Frame == 10).Value),
             "Unsupported roll is not silently turned into yaw");
-        Near(5, Convert.ToSingle(camera.Keyframes[$"camera.effect.{barsIndex}.cinematic_bars.offset"][^1].Value),
+        Near(5, Convert.ToSingle(camera.Keyframes[$"camera.effect.{barsIndex}.cinematic_bars.offset"].Single(k => k.Frame == 10).Value),
             "Rotated source offset is projected onto the bar normal");
         Check(warnings.Any(w => w.Contains("native noise")) &&
               new[] { "CAM_BRIGHTNESS", "CAM_VHS" }.All(c => warnings.Any(w => w.Contains(c))) &&
               !warnings.Any(w => w.Contains("CAM_COLOR_BURN")),
             "Approximate and unmapped rendering features are reported explicitly");
+
+        void Seek(int frame)
+        {
+            typeof(Timeline).GetField("_currentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(timeline, frame);
+            timeline.ApplyKeyframesAtCurrentFrame();
+        }
+
+        void SeekBenchmark(int frame)
+        {
+            typeof(Timeline).GetField("_currentFrame", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(benchmarkTimeline, frame);
+            benchmarkTimeline.ApplyKeyframesAtCurrentFrame();
+        }
+    }
+
+    private static void MiImportProjectBurnColor(string path)
+    {
+        Check(File.Exists(path), "Supplied Mine-imator project exists");
+        Check(Path.GetExtension(path).Equals(".miproject", StringComparison.OrdinalIgnoreCase),
+            "Supplied project is a .miproject file");
+        var loader = new MineImatorLoader();
+        var source = loader.LoadMiObject(path) ?? throw new InvalidDataException("Could not load the supplied Mine-imator project.");
+        var root = loader.CreateSceneFromMiObject(source, warning: _ => { }) ??
+            throw new InvalidDataException("Could not import the supplied Mine-imator project.");
+        CameraSceneObject? camera = null;
+        int correctionIndex = -1;
+        foreach (var candidate in root.GetAllDescendants().OfType<CameraSceneObject>())
+        {
+            int index = candidate.Effects.FindIndex(effect => effect.Type == CameraEffectType.ColorCorrection);
+            if (index < 0) continue;
+            string candidatePath = $"camera.effect.{index}.color_correction.";
+            if (!candidate.Keyframes.ContainsKey(candidatePath + "burn_color.r")) continue;
+            camera = candidate;
+            correctionIndex = index;
+            break;
+        }
+        Check(camera != null, "Supplied project imports its animated camera burn color");
+        string prefix = $"camera.effect.{correctionIndex}.color_correction.";
+        var correction = camera!.Effects[correctionIndex].ColorCorrection;
+        Near(0, correction.ColorBurn, "Supplied project leaves native burn percentage disabled");
+        Check(!camera.Keyframes.ContainsKey(prefix + "color_burn"), "Supplied project creates no burn percentage track");
+        foreach (var (component, first, second) in new[]
+                 {
+                     ("r", 238f / 255, 1f), ("g", 246f / 255, 248f / 255), ("b", 1f, 238f / 255)
+                 })
+        {
+            var values = camera.Keyframes[prefix + "burn_color." + component]
+                .Select(key => Convert.ToSingle(key.Value)).ToArray();
+            Equal(20, values.Length, "Supplied camera retains all 20 burn color keys for " + component);
+            Check(values.All(value => MathF.Abs(value - first) < 0.00001f || MathF.Abs(value - second) < 0.00001f),
+                "Supplied camera burn color matches its two source colors for " + component);
+            Check(values.Any(value => MathF.Abs(value - first) < 0.00001f) &&
+                  values.Any(value => MathF.Abs(value - second) < 0.00001f),
+                "Supplied camera animates both source colors for " + component);
+        }
     }
 
     private static void MiImportResources(Fixture f)

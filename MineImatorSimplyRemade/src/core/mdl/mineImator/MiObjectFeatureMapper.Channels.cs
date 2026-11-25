@@ -609,8 +609,6 @@ public static partial class MiObjectFeatureMapper
                 if (type == CameraEffectType.ColorCorrection)
                 {
                     Map(["CAM_CONTRAST"], path + group + ".contrast", key => (Read(key, "CAM_CONTRAST", 0) + 1) * 100);
-                    // Mine-imator's color burn channel is the burn color; white has no visible effect.
-                    Map(["CAM_COLOR_BURN"], path + group + ".color_burn", key => 100f, true);
                     Color("CAM_COLOR_BURN", path + group + ".burn_color", "#FFFFFF");
                 }
                 if (type == CameraEffectType.LensDirt)
