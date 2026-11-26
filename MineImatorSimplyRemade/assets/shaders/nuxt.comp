@@ -647,12 +647,21 @@ vec3 SnapToVoxel(vec3 p, float size, float randomness)
     return (cell + 0.5) * size;
 }
 
-// settings = (voxel size, voxel size randomness, top cutoff); height is the unsnapped object-space height.
-vec3 VolumeVoxelCenter(int instanceIndex, vec3 settings, vec3 worldPoint, out float height)
+// settings = (voxel size, voxel size randomness, top cutoff, ignore object scale); height is the unsnapped
+// object-space height. The result is an object-space point. When the object's scale is ignored the voxel grid is
+// laid out in world-sized units (the scale of uModel, bound by BindGraph) and converted back.
+vec3 VolumeVoxelCenter(int instanceIndex, vec4 settings, vec3 worldPoint, out float height)
 {
     vec3 rawLocal = TransformInstancePoint(instanceIndex, worldPoint, true);
     height = rawLocal.y;
-    return settings.x > 1e-4 ? SnapToVoxel(rawLocal, settings.x, settings.y) : rawLocal;
+    if (settings.x <= 1e-4)
+        return rawLocal;
+    if (settings.w > 0.5)
+    {
+        vec3 scale = graphMatrixScale(uModel);
+        return SnapToVoxel(rawLocal * scale, settings.x, settings.y) / scale;
+    }
+    return SnapToVoxel(rawLocal, settings.x, settings.y);
 }
 
 // Runs the graph at an object-space point. The coefficients exclude the per-step edge and cutoff factors.
@@ -660,8 +669,12 @@ VolumeSample EvaluateVolumeAt(GraphMaterial graph, int materialIndex, int instan
 {
     BindGraph(graph, materialIndex, instanceIndex);
     vec3 worldPoint = TransformInstancePoint(instanceIndex, local, false);
-    vec3 generated = graphSafeDivide(local - graph.boundsMin, graph.boundsSize);
-    runShaderGraph(local, generated.xz, worldPoint, vec3(0.0, 1.0, 0.0), -direction, false, graph.time);
+    // Ignoring the object's scale feeds the graph a position measured in world blocks along the object's axes, and
+    // Generated coordinates that grow outward from the bounds' centre.
+    gGraphPositionScale = readShaderGraphVolumeSettings().w > 0.5 ? graphMatrixScale(uModel) : vec3(1.0);
+    vec3 generated = graphGeneratedCoordinates(local, gGraphPositionScale);
+    runShaderGraph(local * gGraphPositionScale, generated.xz, worldPoint, vec3(0.0, 1.0, 0.0), -direction, false, graph.time);
+    gGraphPositionScale = vec3(1.0);
     NodeVolume volume = readShaderGraphVolume();
     float sigma = volume.density * volume.pathVisibility * GRAPH_VOLUME_DENSITY;
     VolumeSample result;
@@ -677,7 +690,7 @@ VolumeSample EvaluateVolumeAt(GraphMaterial graph, int materialIndex, int instan
 }
 
 // Fades density towards the surfaces the ray entered and left through, and below the top cutoff plane.
-float VolumeStepFactor(GraphMaterial graph, vec3 settings, float softness, float height, float t,
+float VolumeStepFactor(GraphMaterial graph, vec4 settings, float softness, float height, float t,
     float segmentLength, bool entryBoundary, bool exitBoundary)
 {
     float edgeDistance = min(entryBoundary ? t : 1e30, exitBoundary ? segmentLength - t : 1e30);
@@ -700,7 +713,7 @@ vec3 VolumeTransmittance(vec3 origin, vec3 direction, float segmentLength, int i
     if (graph.row < 0 || segmentLength <= 1e-5)
         return vec3(1.0);
     BindGraph(graph, materialIndex, instanceIndex);
-    vec3 settings = readShaderGraphVolumeSettings();
+    vec4 settings = readShaderGraphVolumeSettings();
     const int shadowSteps = 6;
     float stepLength = segmentLength / float(shadowSteps);
     vec3 opticalDepth = vec3(0.0);
@@ -848,7 +861,7 @@ void AccumulateVolume(vec3 origin, vec3 direction, float segmentLength, int inst
     if (graph.row < 0)
         return;
     BindGraph(graph, materialIndex, instanceIndex);
-    vec3 settings = readShaderGraphVolumeSettings();
+    vec4 settings = readShaderGraphVolumeSettings();
     int steps = clamp(int(ceil(segmentLength / max(uVolumeStepSize, 0.01))), 1, max(uVolumeMaxSteps, 1));
     float stepLength = segmentLength / float(steps);
     float lightChance = clamp(float(uVolumeLightSamples) / float(steps), 0.0, 1.0);

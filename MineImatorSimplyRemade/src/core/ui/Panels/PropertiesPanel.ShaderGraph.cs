@@ -1149,7 +1149,7 @@ public partial class PropertiesPanel
         {
             ImGui.Spacing();
             ImGui.TextWrapped(Localization.DisplayText(node.Kind == ShaderNodeKind.FogVolumeOutput
-                ? "Turns the object into a fog volume; use a closed shape. The NuxT path tracer marches rays through it with voxel-snapped density. The viewport only shows a translucent preview. Voxel size 0 gives smooth fog; Top Cutoff trims the volume at a fraction of its height."
+                ? "Turns the object into a fog volume; use a closed shape. The Rendered view and the NuxT path tracer march rays through it with voxel-snapped density. Voxel size 0 gives smooth fog; Top Cutoff trims the volume at a fraction of its height. Ignore Object Scale keeps the voxel size and the Position, Object, Generated and Noise patterns the same size in the world however much the object is scaled: a bigger object shows more of the pattern around its edges instead of stretching it."
                 : "Transmission refracts the scene behind the surface using IOR and Refraction Depth; Alpha fades it out. Both draw in the transparent pass."));
             return graph;
         }

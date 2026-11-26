@@ -51,6 +51,16 @@ struct NodeSurface {
 vec3 gGraphRegs[GRAPH_REGISTERS];
 vec3 gGraphPosition;
 vec2 gGraphUv;
+// Fog volumes that ignore their object's scale run the graph at the object-space position multiplied by this, so
+// one unit is one world block along each object axis. Generated coordinates scale outward from the centre of the
+// object's bounds by the same factor (graphGeneratedCoordinates). The fog code sets it around runShaderGraph and
+// resets it to 1 afterwards.
+vec3 gGraphPositionScale = vec3(1.0);
+
+// Scale of an object-to-world matrix along each of its axes, never zero.
+vec3 graphMatrixScale(mat4 m) {
+    return max(vec3(length(m[0].xyz), length(m[1].xyz), length(m[2].xyz)), vec3(1e-6));
+}
 
 float graphValue(vec3 v) { return dot(v, vec3(0.2126, 0.7152, 0.0722)); }
 
@@ -482,6 +492,15 @@ vec3 graphSafeDivide(vec3 a, vec3 b) {
     return vec3(graphSafeDivide(a.x, b.x), graphSafeDivide(a.y, b.y), graphSafeDivide(a.z, b.z));
 }
 
+// Generated coordinates of an object-space point: 0..1 across the object's bounds. A volume that ignores its
+// object's scale passes that scale (1 otherwise). Generated then grows outward from the bounds' centre as the
+// object scales, so a bigger object shows more of the same pattern (values below 0 and above 1) instead of
+// stretching it, and scale 1 is exactly the plain bounds mapping.
+vec3 graphGeneratedCoordinates(vec3 local, vec3 scale) {
+    vec3 centre = uShaderGraphBoundsMin + 0.5 * uShaderGraphBoundsSize;
+    return graphSafeDivide(local - uShaderGraphBoundsMin + (scale - 1.0) * (local - centre), uShaderGraphBoundsSize);
+}
+
 vec3 graphVectorMath(int op, vec3 a, vec3 b, vec3 c, float scale, out float value) {
     value = 0.0;
     switch (op) {
@@ -636,7 +655,7 @@ void runShaderGraph(vec3 position, vec2 uv, vec3 world, vec3 normal, vec3 incomi
             case 12: r0 = IN(0) * IN(1); break;
             case 13: r0 = graphMapping(mode, IN(0), IN(1), IN(2), IN(3)); break;
             case 14: {
-                r0 = graphSafeDivide(position - uShaderGraphBoundsMin, uShaderGraphBoundsSize);
+                r0 = graphGeneratedCoordinates(position / gGraphPositionScale, gGraphPositionScale);
                 vec3 objectNormal = transpose(mat3(uModel)) * normal;
                 r1 = dot(objectNormal, objectNormal) > 0.0 ? normalize(objectNormal) : normal;
                 r2 = vec3(uv, 0.0);
@@ -788,8 +807,9 @@ struct NodeVolume {
 };
 
 // Voxel size, size randomness and top cutoff are plain settings: the sample position is snapped to the
-// voxel grid before the graph runs, so they cannot come from the graph itself.
-vec3 readShaderGraphVolumeSettings() { return graphFetch(uShaderGraphOutputStart + 10).xyz; }
+// voxel grid before the graph runs, so they cannot come from the graph itself. w is 1 when the volume
+// ignores its object's scale, which moves the voxel grid and the graph's position into world-sized units.
+vec4 readShaderGraphVolumeSettings() { return graphFetch(uShaderGraphOutputStart + 10); }
 
 NodeVolume readShaderGraphVolume() {
     int o = uShaderGraphOutputStart;
@@ -804,7 +824,7 @@ NodeVolume readShaderGraphVolume() {
     v.emission = clamp(graphInput(o + 7), 0.0, 16.0);
     v.emissionStrength = clamp(graphInput(o + 8).x, 0.0, 1024.0);
     v.pathVisibility = clamp(graphInput(o + 9).x, 0.0, 1.0);
-    vec3 settings = readShaderGraphVolumeSettings();
+    vec4 settings = readShaderGraphVolumeSettings();
     v.voxelSize = settings.x;
     v.voxelRandomness = settings.y;
     v.topCutoff = settings.z;
@@ -812,8 +832,8 @@ NodeVolume readShaderGraphVolume() {
 }
 
 #ifndef GRAPH_COMPUTE
-// The viewport cannot march rays: a fog volume draws as a translucent shell. Opacity assumes half a block of
-// medium, so the NuxT path tracer is needed for the real look.
+// Fallback for draws that cannot march (simple.frag marches fog volumes when the viewport supplies the range and
+// scene depth inputs): a fog volume draws as a translucent shell. Opacity assumes half a block of medium.
 NodeSurface graphVolumePreview(NodeVolume v) {
     float optical = v.density * (v.scattering + v.absorption) * GRAPH_VOLUME_DENSITY * 0.5;
     float alpha = (1.0 - exp(-optical)) * v.pathVisibility;

@@ -4348,8 +4348,9 @@ public partial class Viewport : UiPanel
             if (IsObjectVisible(obj) && obj.CastShadow && !obj.IgnoreDepth)
             {
                 foreach (mat4 model in GetModifiedWorldMatrices(obj, sourceModel))
+                    // Fog volumes never block light: their medium is integrated by the ray march instead.
                     foreach (var mesh in obj.Visuals.Where(mesh => !mesh.PickOnly &&
-                                 !mesh.DepthTestDisabled && !mesh.DepthWriteDisabled))
+                                 !mesh.DepthTestDisabled && !mesh.DepthWriteDisabled && !mesh.IsFogVolume))
                     {
                         mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
 
@@ -4390,7 +4391,7 @@ public partial class Viewport : UiPanel
                 {
                     bool includedMeshVertex = false;
                     foreach (var mesh in obj.Visuals.Where(m => !m.PickOnly &&
-                                 !m.DepthTestDisabled && !m.DepthWriteDisabled && m.Vertices.Count != 0))
+                                 !m.DepthTestDisabled && !m.DepthWriteDisabled && !m.IsFogVolume && m.Vertices.Count != 0))
                     {
                         includedMeshVertex = true;
                         // Use the local bounding sphere to compute world-space extents,
@@ -4443,7 +4444,7 @@ public partial class Viewport : UiPanel
             {
                 foreach (mat4 model in GetModifiedWorldMatrices(obj, sourceModel))
                     foreach (var mesh in obj.Visuals.Where(mesh =>
-                                 mesh is { PickOnly: false, DepthTestDisabled: false, DepthWriteDisabled: false }))
+                                 mesh is { PickOnly: false, DepthTestDisabled: false, DepthWriteDisabled: false, IsFogVolume: false }))
                     {
                         mesh.CullFrontFaces = obj.GetEffectiveInvertFaces();
 
@@ -5812,6 +5813,15 @@ public partial class Viewport : UiPanel
             // Each transmissive surface refracts everything drawn before it, including earlier glass.
             if (mesh.UsesShaderGraphTransmission && !forceUnshaded)
                 CaptureShaderGraphBackdrop();
+            // A fog volume is ray marched against the scene drawn so far: it needs that colour (for coloured
+            // extinction), the scene depth and the range of the volume along every camera ray.
+            bool fogVolume = false;
+            if (mesh.IsFogVolume && !forceUnshaded)
+            {
+                CaptureShaderGraphBackdrop();
+                fogVolume = CaptureFogVolumeInputs(mesh, model, view, proj);
+                cachedBlendMode = null;
+            }
             bool translucent = mesh.RequiresTranslucentPass;
             bool depthMask = !translucent && !mesh.DepthWriteDisabled;
             if (cachedDepthMask != depthMask)
@@ -5829,6 +5839,14 @@ public partial class Viewport : UiPanel
             {
                 Mesh.ApplyBlendMode(Gl, mesh.BlendMode);
                 cachedBlendMode = mesh.BlendMode;
+            }
+            if (fogVolume)
+            {
+                // The shader returns premultiplied in-scattered light and the opacity of the medium, so
+                // the result is light + transmittance * what is behind, whatever the material blend mode.
+                Gl.BlendEquation(GLEnum.FuncAdd);
+                Gl.BlendFuncSeparate(GLEnum.One, GLEnum.OneMinusSrcAlpha, GLEnum.One, GLEnum.OneMinusSrcAlpha);
+                cachedBlendMode = null;
             }
             SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), allLights, cacheSelection: true);
             // Consecutive identical meshes (same geometry and shading state) draw as one instanced call.
@@ -5866,10 +5884,17 @@ public partial class Viewport : UiPanel
             }
             else
                 RenderMeshWithModeOverride(mesh, model, view, proj, forceUnshaded, includeFog, blurTexture, textureMipmaps, _preparedMipmaps);
-            if (mesh.DepthWriteDisabled || mesh.DepthTestDisabled)
+            if (mesh.DepthWriteDisabled || mesh.DepthTestDisabled || fogVolume)
                 cachedDepthMask = null;
+            if (fogVolume)
+            {
+                Mesh.FogVolumeRangeTexture = 0;
+                Mesh.FogVolumeSceneDepthTexture = 0;
+            }
         }
         Gl.DepthMask(true);
+        Mesh.FogVolumeRangeTexture = 0;
+        Mesh.FogVolumeSceneDepthTexture = 0;
         Mesh.ShaderGraphSceneColorTexture = 0;
         Gl.ColorMask(1, true, true, true, true);
         Gl.ColorMask(2, true, true, true, true);
@@ -5992,6 +6017,122 @@ public partial class Viewport : UiPanel
         Gl.BindFramebuffer(GLEnum.ReadFramebuffer, (uint)readFbo);
         if (scissor) Gl.Enable(EnableCap.ScissorTest);
         Mesh.ShaderGraphSceneColorTexture = _graphBackdropTex;
+    }
+
+    private uint _fogRangeFbo, _fogRangeTex, _fogDepthFbo, _fogDepthTex;
+    private int _fogWidth, _fogHeight;
+    private bool _fogUnsupported;
+
+    /// <summary>
+    /// Prepares the inputs the shader needs to ray march <paramref name="mesh"/>, a fog volume, against the
+    /// scene drawn so far: a copy of the scene depth and, per pixel, the nearest outward-facing and farthest
+    /// inward-facing surface of the volume (see <see cref="Mesh.FogVolumeRangeTexture"/>). Leaves the
+    /// framebuffer bindings, viewport and scissor state as they were. Returns false when the volume has to
+    /// draw as a plain translucent shell instead.
+    /// </summary>
+    private unsafe bool CaptureFogVolumeInputs(Mesh mesh, mat4 model, mat4 view, mat4 proj)
+    {
+        Mesh.FogVolumeRangeTexture = 0;
+        Mesh.FogVolumeSceneDepthTexture = 0;
+        if (_fogUnsupported) return false;
+        Gl.GetInteger(GLEnum.DrawFramebufferBinding, out int drawFbo);
+        if (drawFbo == 0) return false;
+        Gl.GetInteger(GLEnum.MaxTextureImageUnits, out int textureUnits);
+        if (textureUnits <= Mesh.FogVolumeSceneDepthUnit)
+        {
+            _fogUnsupported = true;
+            Console.Error.WriteLine("Fog volumes need 18 texture units; drawing them as translucent shells.");
+            return false;
+        }
+        Span<int> viewport = stackalloc int[4];
+        Gl.GetInteger(GLEnum.Viewport, viewport);
+        int width = viewport[2], height = viewport[3];
+        if (width <= 0 || height <= 0) return false;
+        Mesh.InvalidateBatchTextureCache();
+
+        Gl.GetInteger(GLEnum.ReadFramebufferBinding, out int readFbo);
+        Gl.GetInteger(GLEnum.ReadBuffer, out int readBuffer);
+        if (_fogRangeTex == 0 || _fogWidth != width || _fogHeight != height)
+        {
+            Gl.GetInteger(GLEnum.TextureBinding2D, out int previousTexture);
+            if (_fogRangeTex == 0)
+            {
+                _fogRangeTex = Gl.GenTexture();
+                _fogDepthTex = Gl.GenTexture();
+                _fogRangeFbo = Gl.GenFramebuffer();
+                _fogDepthFbo = Gl.GenFramebuffer();
+            }
+            void Allocate(uint texture, InternalFormat format, PixelFormat pixelFormat, GLEnum pixelType)
+            {
+                Gl.BindTexture(GLEnum.Texture2D, texture);
+                Gl.TexImage2D(GLEnum.Texture2D, 0, format, (uint)width, (uint)height, 0, pixelFormat, pixelType, null);
+                Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)GLEnum.Nearest);
+                Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)GLEnum.Nearest);
+                Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.ClampToEdge);
+                Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
+                Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMaxLevel, 0);
+            }
+            Allocate(_fogRangeTex, InternalFormat.Rgba32f, PixelFormat.Rgba, GLEnum.Float);
+            Allocate(_fogDepthTex, InternalFormat.DepthComponent24, PixelFormat.DepthComponent, GLEnum.UnsignedInt);
+            Gl.BindTexture(GLEnum.Texture2D, (uint)previousTexture);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, _fogRangeFbo);
+            Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.ColorAttachment0, GLEnum.Texture2D, _fogRangeTex, 0);
+            Gl.DrawBuffer(GLEnum.ColorAttachment0);
+            Gl.ReadBuffer(GLEnum.ColorAttachment0);
+            bool complete = Gl.CheckFramebufferStatus(GLEnum.Framebuffer) == GLEnum.FramebufferComplete;
+            Gl.BindFramebuffer(GLEnum.Framebuffer, _fogDepthFbo);
+            Gl.FramebufferTexture2D(GLEnum.Framebuffer, GLEnum.DepthAttachment, GLEnum.Texture2D, _fogDepthTex, 0);
+            Gl.DrawBuffer(GLEnum.None);
+            Gl.ReadBuffer(GLEnum.None);
+            complete &= Gl.CheckFramebufferStatus(GLEnum.Framebuffer) == GLEnum.FramebufferComplete;
+            Gl.BindFramebuffer(GLEnum.DrawFramebuffer, (uint)drawFbo);
+            Gl.BindFramebuffer(GLEnum.ReadFramebuffer, (uint)readFbo);
+            Gl.ReadBuffer((GLEnum)readBuffer);
+            (_fogWidth, _fogHeight) = (width, height);
+            if (!complete)
+            {
+                _fogUnsupported = true;
+                Console.Error.WriteLine("Fog volume framebuffers are incomplete; drawing volumes as translucent shells.");
+                return false;
+            }
+        }
+
+        bool scissor = Gl.IsEnabled(EnableCap.ScissorTest);
+        if (scissor) Gl.Disable(EnableCap.ScissorTest);
+
+        // Scene depth: volumes write none, so this holds the opaque surfaces that end a camera ray inside one.
+        Gl.BindFramebuffer(GLEnum.ReadFramebuffer, (uint)drawFbo);
+        Gl.BindFramebuffer(GLEnum.DrawFramebuffer, _fogDepthFbo);
+        Gl.BlitFramebuffer(viewport[0], viewport[1], viewport[0] + width, viewport[1] + height,
+            0, 0, width, height, ClearBufferMask.DepthBufferBit, GLEnum.Nearest);
+
+        // Range pass: the maximum over inward-facing and the minimum over outward-facing surface distances.
+        Gl.BindFramebuffer(GLEnum.DrawFramebuffer, _fogRangeFbo);
+        Gl.Viewport(0, 0, (uint)width, (uint)height);
+        Gl.ColorMask(0, true, true, true, true);
+        Span<float> empty = stackalloc float[] { 0f, 0f, 0f, 1e30f };
+        Gl.ClearBuffer(GLEnum.Color, 0, empty);
+        Gl.Enable(GLEnum.Blend);
+        Gl.BlendEquationSeparate(GLEnum.Max, GLEnum.Min);
+        Gl.BlendFuncSeparate(GLEnum.One, GLEnum.One, GLEnum.One, GLEnum.One);
+        Mesh.FogVolumeRangePass = true;
+        try { mesh.Render(model, view, proj, null, useSceneLighting: false); }
+        finally { Mesh.FogVolumeRangePass = false; }
+        Gl.BlendEquationSeparate(GLEnum.FuncAdd, GLEnum.FuncAdd);
+        Gl.BlendFuncSeparate(GLEnum.SrcAlpha, GLEnum.OneMinusSrcAlpha, GLEnum.One, GLEnum.OneMinusSrcAlpha);
+
+        Gl.BindFramebuffer(GLEnum.DrawFramebuffer, (uint)drawFbo);
+        Gl.BindFramebuffer(GLEnum.ReadFramebuffer, (uint)readFbo);
+        Gl.ReadBuffer((GLEnum)readBuffer);
+        Gl.Viewport(viewport[0], viewport[1], (uint)width, (uint)height);
+        if (scissor) Gl.Enable(EnableCap.ScissorTest);
+        Mesh.InvalidateBatchTextureCache();
+
+        Mesh.FogVolumeRangeTexture = _fogRangeTex;
+        Mesh.FogVolumeSceneDepthTexture = _fogDepthTex;
+        Mesh.FogVolumeOrigin = new vec2(viewport[0], viewport[1]);
+        Mesh.FogVolumeInverseViewProj = (proj * view).Inverse;
+        return true;
     }
 
     private static void RenderMeshWithModeOverride(

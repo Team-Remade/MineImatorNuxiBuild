@@ -148,7 +148,8 @@ public sealed record ShaderGraph
         ], []),
 
         // Turns the object into a fog volume. Voxel Size, Randomness and Top Cutoff are plain settings because the
-        // sample position is snapped to the voxel grid before the rest of the graph runs.
+        // sample position is snapped to the voxel grid before the rest of the graph runs. Ignore Object Scale (the
+        // node's Clamp flag) measures that grid and the graph's Position in world blocks instead of object units.
         [ShaderNodeKind.FogVolumeOutput] = new("Fog Volume Output", "Output",
         [
             Rgb("Color", 1, 1, 1), Rgb("Extinction Color", 0, 0, 0), Pct("Density", 0.25f),
@@ -157,6 +158,7 @@ public sealed record ShaderGraph
             Pct("Path Visibility", 1)
         ], [])
         {
+            ClampLabel = "Ignore Object Scale",
             Parameters =
             [
                 new("Voxel Size", 0.5f, 0, 16), new("Voxel Size Randomness", 0, 0, 1) { Percent = true },
@@ -443,7 +445,8 @@ public sealed record ShaderGraph
 /// (A, B, C, D) parameters and one texel per input: (source, x, y, z). A source &gt;= 0 is a register
 /// (+1024 when converted to a scalar), -1 a constant, -2 object position and -3 UV coordinates.
 /// The output block holds one texel per output input, followed for a Fog Volume Output by one texel of
-/// (voxel size, voxel size randomness, top cutoff, 0). A Path node stores its path slot in parameter A.
+/// (voxel size, voxel size randomness, top cutoff, 1 when the volume ignores its object's scale).
+/// A Path node stores its path slot in parameter A.
 /// </summary>
 internal sealed class ShaderGraphProgram
 {
@@ -585,7 +588,8 @@ internal sealed class ShaderGraphProgram
         Inputs(output);
         bool volume = output.Kind == ShaderNodeKind.FogVolumeOutput;
         if (volume)
-            data.AddRange([Math.Clamp(output.A, 0, 16), Math.Clamp(output.B, 0, 1), Math.Clamp(output.C, 0, 1), 0]);
+            data.AddRange([Math.Clamp(output.A, 0, 16), Math.Clamp(output.B, 0, 1), Math.Clamp(output.C, 0, 1),
+                output.Clamp ? 1 : 0]);
         if (data.Count / 4 > ShaderGraph.MaxDataTexels) return Invalid("The graph is too complex to render.");
         if (volume)
         {

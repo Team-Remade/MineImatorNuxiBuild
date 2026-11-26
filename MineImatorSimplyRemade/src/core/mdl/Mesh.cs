@@ -1473,6 +1473,8 @@ public partial class Mesh : IDisposable
     // ── Custom shader graphs ──────────────────────────────────────────────────
 
     private const int ShaderGraphDataUnit = 12, ShaderGraphSceneColorUnit = 14;
+    /// <summary>Texture units of the fog volume inputs; the viewport only provides them when the GPU has 18 units.</summary>
+    internal const int FogVolumeRangeUnit = 16, FogVolumeSceneDepthUnit = 17;
 
     /// <summary>Current timeline frame for the shader graph Time node; see <see cref="EffectTime"/>.</summary>
     public static float EffectFrame;
@@ -1483,8 +1485,38 @@ public partial class Mesh : IDisposable
     /// </summary>
     public static uint ShaderGraphSceneColorTexture;
 
+    /// <summary>
+    /// Per-pixel RGBA32F ranges of the fog volume about to draw: R is the distance from the camera to the
+    /// farthest inward-facing surface and A the distance to the nearest outward-facing one. The viewport
+    /// renders it right before each fog volume; zero makes volumes fall back to a translucent shell.
+    /// </summary>
+    public static uint FogVolumeRangeTexture;
+
+    /// <summary>Copy of the scene depth drawn so far, which ends the ray march of a fog volume.</summary>
+    public static uint FogVolumeSceneDepthTexture;
+
+    /// <summary>True while the viewport draws fog volume meshes into <see cref="FogVolumeRangeTexture"/>.</summary>
+    public static bool FogVolumeRangePass;
+
+    /// <summary>Window position of the viewport's lower-left pixel, which the fog textures start at.</summary>
+    public static vec2 FogVolumeOrigin;
+
+    /// <summary>Inverse of the projection-view matrix, used to turn the scene depth into a distance.</summary>
+    public static mat4 FogVolumeInverseViewProj = mat4.Identity;
+
     private uint _graphTexture;
     private ShaderGraphProgram? _graphTextureProgram;
+
+    /// <summary>The mesh's custom shader ends in a Fog Volume Output.</summary>
+    internal bool IsFogVolume =>
+        CustomShader is { Enabled: true } graph && graph.Program is { Error: null, Volume: true };
+
+    /// <summary>
+    /// This draw ray marches the volume (or records its range): both faces draw and nothing depth tests,
+    /// because the shader clips the march against the scene depth itself.
+    /// </summary>
+    private bool FogVolumeDraw =>
+        (FogVolumeRangePass || FogVolumeRangeTexture != 0 && FogVolumeSceneDepthTexture != 0) && IsFogVolume;
 
     internal bool UsesShaderGraphTransmission =>
         CustomShader is { Enabled: true } graph && graph.Program is { Error: null, Transmissive: true };
@@ -1508,12 +1540,29 @@ public partial class Mesh : IDisposable
             _graphTextureProgram = graph;
         }
         SetUniformInt("uShaderGraphData", ShaderGraphDataUnit);
-        bool sceneColor = ShaderGraphSceneColorTexture != 0 && graph.Transmissive;
+        bool sceneColor = ShaderGraphSceneColorTexture != 0 && (graph.Transmissive || graph.Volume);
         _gl.ActiveTexture(GLEnum.Texture0 + ShaderGraphSceneColorUnit);
         _gl.BindTexture(GLEnum.Texture2D, sceneColor ? ShaderGraphSceneColorTexture : 0);
         _gl.ActiveTexture(GLEnum.Texture0);
         SetUniformInt("uShaderGraphSceneColor", ShaderGraphSceneColorUnit);
         SetUniformBool("uShaderGraphSceneColorAvailable", sceneColor);
+        bool fogInputs = graph.Volume && FogVolumeDraw;
+        SetUniformBool("uFogVolumeRangePass", fogInputs && FogVolumeRangePass);
+        SetUniformBool("uFogVolumeMarch", fogInputs && !FogVolumeRangePass);
+        if (fogInputs)
+        {
+            // The range pass renders into the range texture, so it must not be bound while drawing.
+            _gl.ActiveTexture(GLEnum.Texture0 + FogVolumeRangeUnit);
+            _gl.BindTexture(GLEnum.Texture2D, FogVolumeRangePass ? 0 : FogVolumeRangeTexture);
+            _gl.ActiveTexture(GLEnum.Texture0 + FogVolumeSceneDepthUnit);
+            _gl.BindTexture(GLEnum.Texture2D, FogVolumeSceneDepthTexture);
+            _gl.ActiveTexture(GLEnum.Texture0);
+            SetUniformInt("uFogRange", FogVolumeRangeUnit);
+            SetUniformInt("uFogSceneDepth", FogVolumeSceneDepthUnit);
+            SetUniformVec2("uFogOrigin", FogVolumeOrigin);
+            SetUniformMat4("uFogInverseViewProj", FogVolumeInverseViewProj);
+            SetUniformBool("uFogInvertFaces", CullFrontFaces);
+        }
         SetUniformInt("uShaderGraphCount", graph.Count);
         SetUniformInt("uShaderGraphOutputStart", graph.OutputStart);
         SetUniformInt("uShaderGraphFlags", graph.Flags);
@@ -1756,13 +1805,14 @@ public partial class Mesh : IDisposable
             _gl.ActiveTexture(GLEnum.Texture0);
         }
 
+        bool fogVolumeDraw = useGraph && FogVolumeDraw;
         if (reuse)
             ApplyBatchFaceCulling();
         else
             ApplyFaceCulling();
 
         // Overlay meshes render on top of all geometry: depth test off, depth writes off.
-        if (DepthTestDisabled)
+        if (DepthTestDisabled || fogVolumeDraw)
         {
             _gl.Disable(GLEnum.DepthTest);
             _gl.DepthMask(false);
@@ -1793,7 +1843,7 @@ public partial class Mesh : IDisposable
             _gl.BindVertexArray(0);
 
         // Restore depth state after overlay draw.
-        if (DepthTestDisabled)
+        if (DepthTestDisabled || fogVolumeDraw)
         {
             _gl.Enable(GLEnum.DepthTest);
             _gl.DepthFunc(GLEnum.Less);
@@ -1838,6 +1888,13 @@ public partial class Mesh : IDisposable
             _gl.BindTexture(GLEnum.Texture2D, 0);
             _gl.ActiveTexture(GLEnum.Texture0 + ShaderGraphSceneColorUnit);
             _gl.BindTexture(GLEnum.Texture2D, 0);
+            if (fogVolumeDraw)
+            {
+                _gl.ActiveTexture(GLEnum.Texture0 + FogVolumeRangeUnit);
+                _gl.BindTexture(GLEnum.Texture2D, 0);
+                _gl.ActiveTexture(GLEnum.Texture0 + FogVolumeSceneDepthUnit);
+                _gl.BindTexture(GLEnum.Texture2D, 0);
+            }
         }
         if (useAlphaMask && !inBatch)
         {
@@ -1951,7 +2008,8 @@ public partial class Mesh : IDisposable
     {
         // Double-sided is a material property and therefore takes precedence:
         // inversion only selects which single side is visible when culling is on.
-        if (DoubleSided)
+        // A fog volume needs both faces: the march starts at the near one and ends at the far one.
+        if (DoubleSided || FogVolumeDraw)
         {
             _gl.Disable(GLEnum.CullFace);
             return;
@@ -1967,7 +2025,7 @@ public partial class Mesh : IDisposable
     /// </summary>
     private void ApplyBatchFaceCulling()
     {
-        int mode = DoubleSided ? 0 : CullFrontFaces ? 1 : 2;
+        int mode = DoubleSided || FogVolumeDraw ? 0 : CullFrontFaces ? 1 : 2;
         if (_batchCull == mode) return;
         if (mode == 0)
         {

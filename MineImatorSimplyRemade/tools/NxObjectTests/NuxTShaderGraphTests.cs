@@ -99,6 +99,11 @@ internal static partial class Program
         Check(spec.Parameters.Select(parameter => parameter.Name).SequenceEqual(["Voxel Size", "Voxel Size Randomness", "Top Cutoff"]),
             "Fog Volume Output exposes voxel size, randomness and top cutoff");
         Check(spec.Parameters[1].Percent && spec.Parameters[2].Percent, "Randomness and cutoff are percentages");
+        Check(spec.ClampLabel == "Ignore Object Scale" && !ShaderGraph.CreateNode(1, ShaderNodeKind.FogVolumeOutput, 0, 0).Clamp,
+            "Fog Volume Output has an Ignore Object Scale option that starts off");
+        float IgnoreScaleFlag(ShaderGraph graph) => graph.Program.Data[(graph.Program.OutputStart + expectedInputs.Length) * 4 + 3];
+        Check(IgnoreScaleFlag(NuxTFogGraph(node => node)) == 0f && IgnoreScaleFlag(NuxTFogGraph(node => node with { Clamp = true })) == 1f,
+            "Ignore Object Scale is packed into the volume settings the shaders read");
         Check(ShaderGraph.IsOutput(ShaderNodeKind.FogVolumeOutput) && ShaderGraph.IsOutput(ShaderNodeKind.Output) &&
               !ShaderGraph.IsOutput(ShaderNodeKind.Path), "Both output kinds are outputs and the Path node is not");
 
@@ -194,6 +199,11 @@ internal static partial class Program
               Math.Abs(ShaderGraph.InputValue(loaded.Nodes.Single(node => node.Kind == ShaderNodeKind.FogVolumeOutput),
                   ShaderGraph.FogInput("Density")).X - 0.6f) < 1e-6f,
             "Archive keeps the fog output, its settings and the followed path");
+        obj.MaterialSettings.CustomShader = NuxTFogGraph(node => node with { Clamp = true });
+        var loadedIgnoring = fixture.Roundtrip(obj).Item1.Root.CustomShader!;
+        Check(loadedIgnoring.Nodes.Single(node => node.Kind == ShaderNodeKind.FogVolumeOutput).Clamp &&
+              IgnoreScaleFlag(loadedIgnoring) == 1f && IgnoreScaleFlag(loaded) == 0f,
+            "Archive keeps Ignore Object Scale and old fog outputs stay scaled");
         var legacy = JsonSerializer.Deserialize("{\"Id\":3,\"Kind\":41,\"X\":0,\"Y\":0}", AppJsonContext.Default.ShaderNode);
         Check(legacy is { Kind: ShaderNodeKind.Path, Target: null }, "A Path node without a target loads without one");
     }
@@ -231,9 +241,11 @@ internal static partial class Program
                 paths ?? (_ => null)) ?? throw new InvalidOperationException(graph.ValidationError ?? "Graph is disabled."));
 
         byte[] Render(IEnumerable<NuxTTriangle> triangles, NuxTSettings? overrideSettings = null, Vector3 ambient = default,
-            IEnumerable<NuxTLight>? lights = null)
+            IEnumerable<NuxTLight>? lights = null) =>
+            RenderScene(new NuxTScene(triangles, Vector3.Zero, lights, ambientLight: ambient), overrideSettings);
+
+        byte[] RenderScene(NuxTScene scene, NuxTSettings? overrideSettings = null)
         {
-            var scene = new NuxTScene(triangles, Vector3.Zero, lights, ambientLight: ambient);
             using var renderer = new NuxTComputeRenderer(gl);
             NuxTAssert(renderer.Render(scene, camera, width, height, overrideSettings ?? settings, completeImmediately: true),
                 $"GPU tracing must render the shader graph scene: {renderer.Status}.");
@@ -404,6 +416,70 @@ internal static partial class Program
             $"Dense fog between a light and a surface must dim the light that reaches it ({Luma(shadowed, 8, 8)} vs {open}).");
         NuxTAssert(Math.Abs(Luma(unshadowed, 8, 8) - open) < open * 0.15f,
             $"Turning off fog shadows must let the light through ({Luma(unshadowed, 8, 8)} vs {open}).");
+
+        // Ignore Object Scale: a half-size cube scaled up 2x covers the same world space as the full-size cube. With the
+        // option on its fog matches the full-size cube (the graph sees world-sized positions); off, it is stretched.
+        // Density here is the object-space X coordinate, so the fog gets denser towards one side.
+        var halfMin = new Vector3(-0.5f, -0.5f, -0.75f);
+        var halfMax = new Vector3(0.5f, 0.5f, -0.25f);
+        ShaderGraph PositionFog(bool ignoreScale) =>
+            NuxTFogGraph(node => Sharp(Dense(node)) with { A = 0f, Clamp = ignoreScale }, densityNodes, densityLinks);
+        NuxTScene ScaledCube(ShaderGraph graph, Vector3 min, Vector3 max, float scale) => NuxTScene.CreateInstances(
+        [
+            new NuxTSceneInstance(NuxTCube(min, max, new NuxTMaterial(Vector3.One, Vector3.Zero,
+                ShaderGraph: NuxTShaderGraph.Create(graph, min, max - min, 0f, 0f, _ => null)!)),
+                Matrix4x4.CreateScale(scale)),
+            new NuxTSceneInstance([wall], Matrix4x4.Identity)
+        ], Vector3.Zero);
+        float MeanDifference(byte[] a, byte[] b)
+        {
+            float sum = 0f;
+            for (int y = 2; y < 14; y++)
+            for (int x = 2; x < 14; x++)
+                sum += Math.Abs(Luma(a, x, y) - Luma(b, x, y));
+            return sum / (12 * 12);
+        }
+        byte[] worldSize = RenderScene(ScaledCube(PositionFog(false), cubeMin, cubeMax, 1f));
+        byte[] unscaledIgnoring = RenderScene(ScaledCube(PositionFog(true), cubeMin, cubeMax, 1f));
+        byte[] scaledIgnoring = RenderScene(ScaledCube(PositionFog(true), halfMin, halfMax, 2f));
+        byte[] scaledStretched = RenderScene(ScaledCube(PositionFog(false), halfMin, halfMax, 2f));
+        NuxTAssert(Luma(worldSize, 2, 8) > Bright && Luma(worldSize, 13, 8) < Dark,
+            $"The reference gradient fog must be empty on one side and dense on the other (left {Luma(worldSize, 2, 8)}, right {Luma(worldSize, 13, 8)}).");
+        NuxTAssert(MeanDifference(worldSize, unscaledIgnoring) < 0.001f,
+            "At scale 1 Ignore Object Scale must change nothing.");
+        NuxTAssert(MeanDifference(worldSize, scaledIgnoring) < 0.05f,
+            $"Ignore Object Scale must show a scaled cube's fog like an unscaled one (difference {MeanDifference(worldSize, scaledIgnoring)}).");
+        NuxTAssert(MeanDifference(worldSize, scaledStretched) > 0.1f,
+            $"Without it the fog pattern must stretch with the object (difference {MeanDifference(worldSize, scaledStretched)}).");
+
+        // Generated coordinates cover the object's bounds. With the option on they grow outward from the bounds' centre
+        // as the object scales: for the half-size cube scaled 2x (unit X bounds, centred on X = 0) Generated X is the
+        // scaled Object X plus 0.5, which the reference graph builds from nodes. Without it Generated stretches. Both feed
+        // a sine wave (ten radians per Generated unit) into the density, so stretching shows as a shifted wave.
+        ShaderNode[] WaveNodes(float offset) =>
+        [
+            .. densityNodes,
+            ShaderGraph.WithInputValue(ShaderGraph.WithInputValue(
+                ShaderGraph.CreateNode(4, ShaderNodeKind.Math, 0, 0) with { Mode = 4 }, "B", 10f), "C", offset),
+            ShaderGraph.CreateNode(5, ShaderNodeKind.Math, 0, 0) with { Mode = 29 }
+        ];
+        ShaderGraph GeneratedFog(bool ignoreScale) => NuxTFogGraph(node => Sharp(Dense(node)) with { A = 0f, Clamp = ignoreScale },
+            WaveNodes(0f), [new(2, 3, 0, 0), new(3, 4, 0), new(4, 5, 0), new(5, 1, ShaderGraph.FogInput("Density"), 0)]);
+        ShaderGraph OffsetFog() => NuxTFogGraph(node => Sharp(Dense(node)) with { A = 0f, Clamp = true },
+            WaveNodes(5f), [new(2, 3, 0, 3), new(3, 4, 0), new(4, 5, 0), new(5, 1, ShaderGraph.FogInput("Density"), 0)]);
+        byte[] generatedReference = RenderScene(ScaledCube(OffsetFog(), halfMin, halfMax, 2f));
+        byte[] generatedIgnoring = RenderScene(ScaledCube(GeneratedFog(true), halfMin, halfMax, 2f));
+        byte[] generatedStretched = RenderScene(ScaledCube(GeneratedFog(false), halfMin, halfMax, 2f));
+        var referenceRow = Enumerable.Range(2, 12).Select(x => Luma(generatedReference, x, 8)).ToArray();
+        NuxTAssert(referenceRow.Max() > Bright && referenceRow.Min() < 0.3f,
+            $"The world-position reference fog must have empty and dense bands (brightest {referenceRow.Max()}, darkest {referenceRow.Min()}).");
+        NuxTAssert(MeanDifference(RenderScene(ScaledCube(GeneratedFog(false), cubeMin, cubeMax, 1f)),
+                RenderScene(ScaledCube(GeneratedFog(true), cubeMin, cubeMax, 1f))) < 0.001f,
+            "At scale 1 Ignore Object Scale must leave Generated coordinates unchanged.");
+        NuxTAssert(MeanDifference(generatedReference, generatedIgnoring) < 0.05f,
+            $"Ignore Object Scale must make Generated coordinates grow outward as the cube scales (difference {MeanDifference(generatedReference, generatedIgnoring)}).");
+        NuxTAssert(MeanDifference(generatedReference, generatedStretched) > 0.1f,
+            $"Without it Generated coordinates must stretch with the object (difference {MeanDifference(generatedReference, generatedStretched)}).");
         NuxTAssert(gl.GetError() == GLEnum.NoError, "Fog volume tracing must leave OpenGL error-free.");
     }
 }

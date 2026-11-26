@@ -81,15 +81,36 @@ sphere; the volume fills its interior.
 - **Voxel Size** snaps density to a grid in the object's space (0 keeps it smooth),
   **Voxel Size Randomness** merges neighboring voxels into larger ones, and
   **Top Cutoff** removes everything above that percentage of the volume's height.
+- **Ignore Object Scale** (a checkbox on the output node, off by default) stops the
+  object's scale from stretching the fog's pattern. The voxel grid and the graph's
+  **Position**, **Object** and noise coordinates are then measured in world blocks along
+  the object's axes, so scaling the object up or down reveals more or less of the same
+  fog instead of resizing it. Voxel Size is also in world blocks. **Generated**
+  coordinates keep their 0 to 1 range across the object's bounds at its original size,
+  but grow outward from the centre of those bounds as the object scales, so a bigger
+  object shows more of the same pattern around the edges (values below 0 and above 1)
+  instead of stretching it. **Edge Softness** and **Top Cutoff** still follow the
+  object's shape, and parent scale counts as part of the object's scale. Without the
+  option, a larger object gets larger clouds.
 - **Path Visibility** takes a **Path** node. Choose a Path object in the node, set
   its **Radius**, **Falloff**, **Start** and **End**, and link its **Visibility**
   output; the fog is only visible near that section of the path, so it can follow
   an animated path. A graph can follow up to 4 different paths, and a path that is
   missing from the scene leaves the whole volume visible.
 
-The OpenGL viewport can't ray march, so it only shows a translucent preview of a
-fog volume. Fog volumes and custom shader graphs are only traced on the GPU: the CPU
-fallback renders those materials with their standard settings and skips fog.
+The OpenGL **Rendered** view ray marches fog volumes too, so they show up without
+switching to NuxT. Each volume is marched from where the camera ray enters it (or
+from the camera when it is inside) to where it leaves or reaches opaque geometry,
+using the same graph, density, voxel and Edge Softness settings. It is lit by ambient
+light, the sun and fill lights (with the directional shadow map) and up to 8 point
+lights (with their shadows), and fog never casts shadows itself. The raster march uses
+a fixed quarter-block step of at most 64 steps with a per-pixel dither, instead of the
+NuxT Fog Volumes quality settings, and it is an approximation: a concave mesh fills the
+span between its first entry and last exit, and Path nodes treat every point as on the
+path. Views that cannot capture the scene behind the volume (for example unshaded
+views) fall back to a translucent preview. Fog volumes and custom shader graphs are
+only traced on the GPU: the CPU fallback renders those materials with their standard
+settings and skips fog.
 
 NuxT is still experimental: blended/translucent surface materials are approximated
 and several material and post-processing details can differ from OpenGL. OpenGL

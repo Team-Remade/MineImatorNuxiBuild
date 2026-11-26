@@ -366,10 +366,11 @@ internal static partial class Program
             viewport.SceneObjects.Add(obj);
             obj.SetExplicitMaterialSettings();
             obj.MaterialSettings.AlbedoColor = new vec4(0.35f, 0.63f, 0.25f, 1f);
+            var subject = obj;
             byte[] Render(ShaderGraph? graph, bool quality = true)
             {
-                obj.MaterialSettings.CustomShader = graph;
-                obj.ApplyMaterialSettingsToMeshes();
+                subject.MaterialSettings.CustomShader = graph;
+                subject.ApplyMaterialSettingsToMeshes();
                 preview.RenderScenePublic(viewport.Camera, null, size, size, highQuality: quality);
                 var pixels = new byte[size * size * 4];
                 gl.BindTexture(GLEnum.Texture2D, preview.ColorTexture);
@@ -543,8 +544,198 @@ internal static partial class Program
                 viewport.SceneObjects.Remove(backdrop);
                 if (!viewport.SceneObjects.Contains(obj)) viewport.SceneObjects.Add(obj);
             }
+            // Fog volumes are ray marched by the raster renderer: the medium is thicker through the middle of the
+            // sphere than near its rim, a camera inside still sees it, and opaque scenery ends the march.
+            // A dark medium scatters nothing, so only its emission is visible (lit white fog saturates the readback).
+            ShaderGraph Fog(float density, float emission = 0f, bool dark = false)
+            {
+                var node = ShaderGraph.CreateNode(1, ShaderNodeKind.FogVolumeOutput, 0, 0) with { A = 0f };
+                foreach (var (name, value) in new[] { ("Density", density), ("Edge Softness", 0f), ("Emission Strength", emission) })
+                    node = ShaderGraph.WithInputValue(node, name, value);
+                if (dark) node = ShaderGraph.WithInputValue(node, "Color", 0f, 0f, 0f);
+                return new ShaderGraph { Enabled = true, Nodes = [node] };
+            }
+            int row = size / 2;
+            int rim = row * size + Enumerable.Range(0, size).First(x => baseline[(row * size + x) * 4 + 3] == 255) + 3;
+            int centerPixel = row * size + size / 2;
+            byte[] fog = Render(Fog(0.5f));
+            // Every pixel clear of the rim marches; a driver that mishandles the ownership discards loses whole triangles.
+            Check(interior.Where(i => Math.Sqrt(Math.Pow(i % size - size / 2, 2) + Math.Pow(i / size - size / 2, 2)) < size * 1f / 3f)
+                .All(i => fog[i * 4 + 3] > 0), "No pixel inside the volume loses its fog");
+            Check(Enumerable.Range(0, size * size).Where(i => baseline[i * 4 + 3] == 0).All(i => fog[i * 4 + 3] == 0),
+                "A fog volume covers exactly the pixels its mesh covers");
+            Check(fog[centerPixel * 4 + 3] is > 60 and < 250 && fog[centerPixel * 4 + 3] > fog[rim * 4 + 3] + 40,
+                $"Fog is thicker through the middle of the volume than near its rim (centre {fog[centerPixel * 4 + 3]}, rim {fog[rim * 4 + 3]})");
+            Check(fog.AsSpan(centerPixel * 4, 3).ToArray().Max() > 8, "Lit fog adds in-scattered light");
+            Check(fog.SequenceEqual(Render(Fog(0.5f))), "A fog volume renders identically from frame to frame");
+            Check(Render(Fog(1f))[centerPixel * 4 + 3] > fog[centerPixel * 4 + 3] + 20, "Denser fog is more opaque");
+            Check(Render(Fog(0f))[centerPixel * 4 + 3] == 0, "Fog without density leaves the pixel transparent");
+            Check(baseline.SequenceEqual(Render(Fog(0.5f) with { Enabled = false })),
+                "Disabling a fog volume restores the standard material");
+
+            // The graph drives the medium: noise-driven density (with voxel snapping) differs from a flat medium.
+            var clouds = ShaderGraphPresets.CreateFogVolume();
+            Equal<string?>(null, clouds.ValidationError, "The fog volume preset is valid");
+            byte[] cloudy = Render(clouds);
+            Check(interior.Count(i => Math.Abs(cloudy[i * 4 + 3] - fog[i * 4 + 3]) > 25) > interior.Length / 10,
+                "A noise-driven fog volume graph shapes the rendered medium");
+            Check(cloudy.SequenceEqual(Render(clouds)), "A noise-driven fog volume renders identically from frame to frame");
+
+            byte[] dark = Render(Fog(0.5f, dark: true));
+            byte[] glow = Render(Fog(0.5f, emission: 4f, dark: true));
+            Check(dark[centerPixel * 4] < 4 && glow[centerPixel * 4] > dark[centerPixel * 4] + 100,
+                $"Emissive fog glows (dark {dark[centerPixel * 4]}, glowing {glow[centerPixel * 4]})");
+            using var coreMesh = new SphereMesh(gl, radius: 0.2f, segments: 32, rings: 24);
+            var core = new SceneObject { PivotOffset = vec3.Zero };
+            core.AddMesh(coreMesh);
+            core.SetExplicitMaterialSettings();
+            core.MaterialSettings.AlbedoColor = new vec4(0f, 0f, 0f, 1f);
+            core.ApplyMaterialSettingsToMeshes();
+            viewport.SceneObjects.Add(core);
+            byte[] clippedTile = [], insideTile = [];
+            try
+            {
+                byte[] clipped = clippedTile = Render(Fog(0.5f, emission: 4f, dark: true));
+                Check(clipped[centerPixel * 4 + 3] == 255 && clipped[centerPixel * 4] < glow[centerPixel * 4] - 30,
+                    $"An opaque object inside a fog volume ends the march in front of it (clipped {clipped[centerPixel * 4]}/{clipped[centerPixel * 4 + 3]}, full {glow[centerPixel * 4]})");
+                Check(clipped.AsSpan(centerPixel * 4, 3).ToArray().Max() > 8, "Fog in front of an opaque object still shows");
+            }
+            finally { viewport.SceneObjects.Remove(core); }
+
+            float previousDistance = viewport.Camera.Distance;
+            try
+            {
+                viewport.Camera.Distance = 0.25f;
+                byte[] inside = insideTile = Render(Fog(0.5f));
+                Check(Enumerable.Range(0, size * size).Count(i => inside[i * 4 + 3] > 20) > size * size * 95 / 100,
+                    "A camera inside a fog volume sees the medium all around it");
+            }
+            finally { viewport.Camera.Distance = previousDistance; }
+
+            // Ignore Object Scale: a half-size sphere scaled up 2x covers the same world space as a full-size sphere.
+            // With the option on it shows the same fog pattern (the graph sees world-sized positions); off, the
+            // pattern is stretched with the object. Density here is the object-space X coordinate.
+            ShaderGraph PositionFog(bool ignoreScale) => new()
+            {
+                Enabled = true,
+                Nodes =
+                [
+                    ShaderGraph.WithInputValue(ShaderGraph.WithInputValue(
+                        ShaderGraph.CreateNode(1, ShaderNodeKind.FogVolumeOutput, 0, 0) with { A = 0f, Clamp = ignoreScale },
+                        "Edge Softness", 0f), "Scattering", 0.25f),
+                    ShaderGraph.CreateNode(2, ShaderNodeKind.TextureCoordinate, 0, 0),
+                    ShaderGraph.CreateNode(3, ShaderNodeKind.SeparateXyz, 0, 0)
+                ],
+                Links = [new(2, 3, 0, 3), new(3, 1, ShaderGraph.FogInput("Density"), 0)]
+            };
+            // Generated coordinates cover the object's bounds. With the option on they grow outward from the bounds'
+            // centre as the object scales, which for this centred sphere with unit bounds is the scaled Object
+            // position plus 0.5; OffsetFog builds exactly that from nodes as the reference. Both feed a sine wave
+            // (ten radians per Generated unit) into the density, so any stretching shows as a shifted wave.
+            ShaderNode[] WaveNodes(bool ignoreScale, float offset) =>
+            [
+                .. PositionFog(ignoreScale).Nodes,
+                ShaderGraph.WithInputValue(ShaderGraph.WithInputValue(
+                    ShaderGraph.CreateNode(4, ShaderNodeKind.Math, 0, 0) with { Mode = 4 }, "B", 10f), "C", offset),
+                ShaderGraph.CreateNode(5, ShaderNodeKind.Math, 0, 0) with { Mode = 29 }
+            ];
+            ShaderGraph GeneratedFog(bool ignoreScale) => new()
+            {
+                Enabled = true,
+                Nodes = [.. WaveNodes(ignoreScale, 0f)],
+                Links = [new(2, 3, 0, 0), new(3, 4, 0), new(4, 5, 0), new(5, 1, ShaderGraph.FogInput("Density"), 0)]
+            };
+            ShaderGraph OffsetFog() => new()
+            {
+                Enabled = true,
+                Nodes = [.. WaveNodes(true, 5f)],
+                Links = [new(2, 3, 0, 3), new(3, 4, 0), new(4, 5, 0), new(5, 1, ShaderGraph.FogInput("Density"), 0)]
+            };
+            int AlphaDifferences(byte[] a, byte[] b) => interior.Count(i => Math.Abs(a[i * 4 + 3] - b[i * 4 + 3]) > 20);
+            Check(PositionFog(true).ValidationError == null && PositionFog(false).ValidationError == null &&
+                  GeneratedFog(true).ValidationError == null && OffsetFog().ValidationError == null,
+                "The position-driven fog graphs are valid");
+            byte[] unscaledOff = Render(PositionFog(false));
+            Check(unscaledOff.SequenceEqual(Render(PositionFog(true))),
+                "At scale 1 Ignore Object Scale changes nothing");
+            Check(Render(GeneratedFog(false)).SequenceEqual(Render(GeneratedFog(true))),
+                "At scale 1 Ignore Object Scale leaves Generated coordinates unchanged");
+            using var wideMesh = new SphereMesh(gl, radius: 1f, segments: 72, rings: 48);
+            var wide = new SceneObject { PivotOffset = vec3.Zero };
+            wide.AddMesh(wideMesh);
+            wide.SetExplicitMaterialSettings();
+            wide.MaterialSettings.AlbedoColor = new vec4(0.35f, 0.63f, 0.25f, 1f);
+            float scaledDistance = viewport.Camera.Distance;
+            try
+            {
+                viewport.Camera.Distance = scaledDistance * 2f;
+                viewport.SceneObjects.Remove(obj);
+                viewport.SceneObjects.Add(wide);
+                subject = wide;
+                byte[] wideSolid = Render(null);
+                byte[] worldSize = Render(PositionFog(false));
+                viewport.SceneObjects.Remove(wide);
+                viewport.SceneObjects.Add(obj);
+                subject = obj;
+                obj.SetLocalScale(new vec3(2f));
+                byte[] scaledSolid = Render(null);
+                byte[] scaledIgnoring = Render(PositionFog(true));
+                byte[] scaledStretched = Render(PositionFog(false));
+                Check(AlphaDifferences(wideSolid, scaledSolid) < interior.Length / 100 &&
+                      interior.Count(i => wideSolid[i * 4 + 3] == 255) > interior.Length * 9 / 10,
+                    "The scaled half-size sphere covers the same pixels as the full-size sphere");
+                Check(interior.Count(i => worldSize[i * 4 + 3] > 40) > interior.Length / 10 &&
+                      interior.Count(i => worldSize[i * 4 + 3] < 10) > interior.Length / 4,
+                    "The reference gradient fog is empty on one side and visible on the other");
+                Check(AlphaDifferences(worldSize, scaledIgnoring) < interior.Length / 50,
+                    $"Ignore Object Scale shows a scaled object's fog exactly like an unscaled one ({AlphaDifferences(worldSize, scaledIgnoring)} of {interior.Length} pixels differ)");
+                Check(AlphaDifferences(worldSize, scaledStretched) > interior.Length / 10,
+                    $"Without it the fog pattern stretches with the object ({AlphaDifferences(worldSize, scaledStretched)} of {interior.Length} pixels differ)");
+
+                byte[] generatedReference = Render(OffsetFog());
+                byte[] generatedIgnoring = Render(GeneratedFog(true));
+                byte[] generatedStretched = Render(GeneratedFog(false));
+                Check(interior.Count(i => generatedReference[i * 4 + 3] > 40) > interior.Length / 10 &&
+                      interior.Count(i => generatedReference[i * 4 + 3] < 10) > interior.Length / 20,
+                    "The world-position reference fog has empty and visible bands");
+                Check(AlphaDifferences(generatedReference, generatedIgnoring) < interior.Length / 50,
+                    $"Ignore Object Scale makes Generated coordinates grow outward from the centre as the object scales ({AlphaDifferences(generatedReference, generatedIgnoring)} of {interior.Length} pixels differ)");
+                Check(AlphaDifferences(generatedReference, generatedStretched) > interior.Length / 10,
+                    $"Without it Generated coordinates stretch with the object ({AlphaDifferences(generatedReference, generatedStretched)} of {interior.Length} pixels differ)");
+            }
+            finally
+            {
+                obj.SetLocalScale(vec3.Ones);
+                viewport.Camera.Distance = scaledDistance;
+                viewport.SceneObjects.Remove(wide);
+                if (!viewport.SceneObjects.Contains(obj)) viewport.SceneObjects.Add(obj);
+                subject = obj;
+            }
+            Equal(GLEnum.NoError, gl.GetError(), "Fog volume draws leave OpenGL error-free");
+
             if (!string.IsNullOrWhiteSpace(contactSheet))
+            {
                 new RenderExporter(preview).ExportImageFromRgb(size * columns, size * rows, "png", contactSheet, sheet, rgba: true);
+                // Fog renders side by side over a dark blue backdrop (the readback has straight alpha): flat,
+                // noise-driven, glowing, around an opaque core, camera inside.
+                byte[][] fogTiles = [fog, cloudy, glow, clippedTile, insideTile];
+                var fogSheet = new byte[size * fogTiles.Length * size * 4];
+                byte[] backdropColor = [30, 50, 80];
+                for (int tile = 0; tile < fogTiles.Length; tile++)
+                    for (int y = 0; y < size; y++)
+                        for (int x = 0; x < size; x++)
+                        {
+                            int from = ((size - y - 1) * size + x) * 4;
+                            int to = (y * size * fogTiles.Length + tile * size + x) * 4;
+                            float cover = fogTiles[tile][from + 3] / 255f;
+                            for (int c = 0; c < 3; c++)
+                                fogSheet[to + c] = (byte)(fogTiles[tile][from + c] * cover + backdropColor[c] * (1f - cover));
+                            fogSheet[to + 3] = 255;
+                        }
+                new RenderExporter(preview).ExportImageFromRgb(size * fogTiles.Length, size, "png",
+                    Path.Combine(Path.GetDirectoryName(contactSheet) ?? "", Path.GetFileNameWithoutExtension(contactSheet) + "-fog.png"),
+                    fogSheet, rgba: true);
+            }
         }
         finally
         {

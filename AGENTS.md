@@ -196,8 +196,11 @@ Coverage and prerequisites:
   node kind, editor shortcuts, and the Fog Volume Output, Path node, output
   swapping and tracer-side path resolution.
 - `--shader-graph-graphics`: OpenGL 3.3; preset pixels, every node kind and
-  output on the GPU, Alpha, Time-driven animation, and screen-space transmission
-  and IOR refraction. Pass a PNG path after the selector to write a contact sheet.
+  output on the GPU, Alpha, Time-driven animation, screen-space transmission
+  and IOR refraction, and raster fog volume marching (coverage, centre-vs-rim
+  thickness, density, emission, an opaque object inside the volume, a camera
+  inside it, and noise-driven graphs). Pass a PNG path after the selector to
+  write a contact sheet.
 
 NuxT shader graphs and fog volumes:
 
@@ -223,6 +226,44 @@ NuxT shader graphs and fog volumes:
   `MaxPaths` bounds the distinct paths so slots fit one texel.
 - The CPU tracer ignores graphs and treats fog volumes as invisible; only the GPU
   tracer implements them. Fog quality lives in `NuxTSettings` (and project settings).
+- Fog Volume Output's `Clamp` flag is labelled **Ignore Object Scale** and packed as `w` of
+  the settings texel (`readShaderGraphVolumeSettings`, now a `vec4`). When set, the raster
+  march (`fogEvaluate`) and the tracer (`EvaluateVolumeAt`, `VolumeVoxelCenter`) snap voxels
+  on `local * scale` and run the graph with `gGraphPositionScale` set to the per-axis length of
+  the `uModel` columns (`graphMatrixScale`), so position-based nodes see world-sized units.
+  Object-space `local` still drives edge softness and the top cutoff plane. `Generated`
+  coordinates come from `graphGeneratedCoordinates(local, scale)`, which maps the bounds to
+  0..1 at scale 1 and otherwise grows outward from the bounds' centre by `scale`, so a
+  bigger object shows more of the same pattern (values outside 0..1) instead of stretching
+  it; `fogEvaluate` and `EvaluateVolumeAt` also feed it into the UV input, and the Texture
+  Coordinate node divides the scale out of its position first. It is a per-axis scale of the
+  full object-to-world matrix (parent scale included); shear and rotation are not separated.
+  Reset `gGraphPositionScale` to 1 after the call, since the global is shared by every
+  graph. `--shader-graph`, `--shader-graph-graphics` and `--nuxt-graphics` render a scaled
+  object with and without the option, driven by both Position and Generated coordinates.
+- The raster viewport ray marches fog volumes in `simple.frag` (`fogVolumeMarch`),
+  using the same `runShaderGraph` and `readShaderGraphVolume` as the tracer.
+  `Viewport.RenderDepthOrdered` calls `CaptureFogVolumeInputs` right before each volume:
+  it copies the scene depth (`Mesh.FogVolumeSceneDepthTexture`, unit 17) and draws the
+  volume into an RGBA32F range texture (`Mesh.FogVolumeRangeTexture`, unit 16) with
+  `Mesh.FogVolumeRangePass`. That pass blends with max for red (farthest inward-facing
+  surface distance) and min for alpha (nearest outward-facing one), so the march pass can
+  draw both faces with no depth test and let exactly one fragment per pixel run: the
+  nearest outward-facing surface, or the farthest inward-facing one when the camera is
+  inside. It marches from there to the exit or the scene depth, whichever is nearer.
+  Winding follows `CullFrontFaces` through `uFogInvertFaces`; the distances are measured
+  from `uCameraPosition`, so a pixel's fragments must agree within a tolerance.
+- Raster fog is premultiplied: the volume draws with `One / OneMinusSrcAlpha`, writing
+  display-encoded in-scattered light and opacity `1 - min(transmittance)`. Coloured
+  extinction adds the remainder using the captured backdrop (`uShaderGraphSceneColor`).
+  Lighting is ambient plus every directional light (one shadow-map tap per step) and up
+  to `FOG_MAX_POINT_LIGHTS` point lights (one shadow-cube tap each), with the phase
+  function scaled so an isotropic medium is 1. Step size, step cap and dither are
+  constants in `simple.frag`. Fog volumes are excluded from every shadow pass and shadow
+  bounds (`Mesh.IsFogVolume`), because the medium would otherwise shadow itself. Draws
+  without those inputs (unshaded views, GPUs below 18 texture units) fall back to
+  `graphVolumePreview`, a translucent shell. The march reads the range and depth
+  textures with unit offsets from `uFogOrigin`, so a viewport with a window offset works.
 - The tracer tone maps with `x / (1 + x)` before sRGB encoding, so a radiance of 1
   reads as byte 188. Graphics tests that check graph or fog output should invert both
   (see `NuxTShaderGraphGraphics`). `new NuxTSettings()` zeroes every field; use named

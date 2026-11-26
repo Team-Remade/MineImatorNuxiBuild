@@ -137,6 +137,11 @@ layout(location = 3) out vec4 OutlineNormal;
 // Copy of the scene drawn so far, captured before transmissive custom-shader surfaces.
 uniform sampler2D uShaderGraphSceneColor;
 uniform bool uShaderGraphSceneColorAvailable;
+// Fog volumes: the range pass records near/far surface distances, the march pass uses them with the scene depth.
+uniform bool uFogVolumeRangePass, uFogVolumeMarch, uFogInvertFaces;
+uniform sampler2D uFogRange, uFogSceneDepth;
+uniform vec2 uFogOrigin;
+uniform mat4 uFogInverseViewProj;
 // Set per fragment by custom shaders; the defaults reproduce the standard material.
 float gDielectricF0 = 0.04;
 float gDiffuseWeight = 1.0;
@@ -497,7 +502,266 @@ vec3 mappedNormal(vec3 normal, vec2 uv, vec2 uvDx, vec2 uvDy)
     return dot(mapped, mapped) > 1e-20 ? normalize(mapped) : normal;
 }
 
+// ── Fog volumes ──────────────────────────────────────────────────────────────
+//
+// The viewport draws a fog volume twice. The range pass writes, per pixel, the distance to the nearest
+// outward-facing surface (alpha, blended with min) and to the farthest inward-facing one (red, blended with
+// max). The march pass then lets exactly one fragment per pixel run: the nearest outward-facing surface, or
+// the farthest inward-facing one when the camera is inside. It marches from the entry (or camera) to the exit
+// or the scene depth, whichever is nearer, running the fog graph per step like the NuxT path tracer does.
+// Light is ambient plus every directional and (up to FOG_MAX_POINT_LIGHTS) point light with their shadows;
+// the result is premultiplied light plus the opacity of the medium for One / OneMinusSrcAlpha blending.
+#define FOG_STEP_SIZE 0.25
+#define FOG_MAX_STEPS 64
+#define FOG_MAX_POINT_LIGHTS 8
+
+struct FogSample {
+    float sigmaScatter;
+    vec3 sigmaTotal;
+    vec3 albedo;
+    vec3 emission;
+    float anisotropy;
+    float softness;
+};
+
+// Henyey-Greenstein scaled so an isotropic medium has phase 1. Lights are then divided by pi in fogIncidentLight, like
+// the Lambert term of the PBR surfaces drawn next to the fog, so fog and surfaces light consistently.
+float fogPhase(float cosine, float g)
+{
+    float g2 = g * g;
+    return (1.0 - g2) / pow(max(1.0 + g2 - 2.0 * g * cosine, 1e-4), 1.5);
+}
+
+// Centre of the voxel containing p. Randomness merges whole blocks of 2x2x2 or 4x4x4 voxels.
+vec3 fogSnapToVoxel(vec3 p, float size, float randomness)
+{
+    vec3 cell = floor(p / size);
+    if (randomness > 0.0) {
+        vec3 large = floor(cell * 0.25);
+        if (graphHash(large + 17.0).x < randomness * 0.25)
+            return (large * 4.0 + 2.0) * size;
+        vec3 medium = floor(cell * 0.5);
+        if (graphHash(medium + 41.0).x < randomness * 0.5)
+            return (medium * 2.0 + 1.0) * size;
+    }
+    return (cell + 0.5) * size;
+}
+
+// Runs the graph at an object-space point. The coefficients exclude the per-step edge and cutoff factors.
+// positionScale is 1, or the object's scale when the volume ignores it: the graph then sees a position measured in
+// world blocks along the object's axes and Generated coordinates grow outward from the bounds' centre.
+FogSample fogEvaluate(vec3 local, vec3 direction, vec3 positionScale)
+{
+    vec3 world = (uModel * vec4(local, 1.0)).xyz;
+    vec3 generated = graphGeneratedCoordinates(local, positionScale);
+    gGraphPositionScale = positionScale;
+    runShaderGraph(local * positionScale, generated.xz, world, vec3(0.0, 1.0, 0.0), -direction, false, uEffectTime);
+    gGraphPositionScale = vec3(1.0);
+    NodeVolume volume = readShaderGraphVolume();
+    float sigma = volume.density * volume.pathVisibility * GRAPH_VOLUME_DENSITY;
+    FogSample result;
+    result.sigmaScatter = sigma * volume.scattering;
+    result.sigmaTotal = vec3(result.sigmaScatter) +
+        sigma * volume.absorption * (vec3(1.0) - toLinear(volume.extinctionColor));
+    result.albedo = toLinear(volume.color);
+    result.emission = (toLinear(min(volume.emission, vec3(1.0))) + max(volume.emission - 1.0, vec3(0.0))) *
+        (volume.emissionStrength * volume.density * volume.pathVisibility);
+    result.anisotropy = volume.anisotropy;
+    result.softness = volume.softness;
+    return result;
+}
+
+// Fades density towards the surfaces the ray entered and left through, and below the top cutoff plane.
+float fogStepFactor(vec4 settings, float softness, float height, float t, float segmentLength,
+                    bool entryBoundary, bool exitBoundary)
+{
+    float edgeDistance = min(entryBoundary ? t : 1e30, exitBoundary ? segmentLength - t : 1e30);
+    float width = min(softness, 0.5 * segmentLength);
+    float edge = width > 1e-4 ? smoothstep(0.0, width, edgeDistance) : 1.0;
+    float cutoff = 1.0;
+    if (settings.z < 1.0) {
+        float plane = uShaderGraphBoundsMin.y + settings.z * uShaderGraphBoundsSize.y;
+        cutoff = softness > 1e-4 ? 1.0 - smoothstep(plane - softness, plane, height) : (height <= plane ? 1.0 : 0.0);
+    }
+    return edge * cutoff;
+}
+
+float fogDirectionalShadow(vec3 world)
+{
+    if (!uUseShadowMap) return 0.0;
+    vec4 clip = uLightSpaceMatrix * vec4(world, 1.0);
+    vec3 projCoords = clip.xyz / max(clip.w, 0.0001) * 0.5 + 0.5;
+    if (projCoords.z > 1.0 || projCoords.z < 0.0 || projCoords.x < 0.0 || projCoords.x > 1.0 ||
+        projCoords.y < 0.0 || projCoords.y > 1.0)
+        return 0.0;
+    vec4 weights;
+    vec4 depths = directionalShadowDepths(projCoords.xy, weights);
+    float shadow = dot(vec4(lessThan(depths, vec4(projCoords.z - 0.002))), weights);
+    vec2 edgeDist = min(projCoords.xy, vec2(1.0) - projCoords.xy);
+    return shadow * clamp(min(edgeDist.x, edgeDist.y) * 20.0, 0.0, 1.0);
+}
+
+float fogPointShadow(int shadowIndex, vec3 world, vec3 lightPos, float range)
+{
+    if (shadowIndex < 0 || shadowIndex >= MAX_POINT_SHADOWS) return 0.0;
+    vec3 lightToPoint = world - lightPos;
+    float currentDepth = length(lightToPoint);
+    if (currentDepth <= 0.0001 || currentDepth >= range) return 0.0;
+    float stored = samplePointShadowCube(shadowIndex, lightToPoint / currentDepth) * range;
+    return stored < currentDepth - 0.05 ? 1.0 : 0.0;
+}
+
+// Light arriving at a point of the medium, before the albedo and scattering coefficient are applied.
+vec3 fogIncidentLight(vec3 world, vec3 rayDirection, float anisotropy)
+{
+    vec3 lights = vec3(0.0);
+    bool shadowed = uMainLightCastsShadows != 0 || uSunFillLightCastsShadows != 0 || uMoonFillLightCastsShadows != 0;
+    float shadow = shadowed ? fogDirectionalShadow(world) : 0.0;
+    lights += max(uLightColor, vec3(0.0)) * (uMainLightCastsShadows != 0 ? 1.0 - shadow : 1.0) *
+        fogPhase(dot(safeDirection(uLightDir, vec3(0.0, 1.0, 0.0)), rayDirection), anisotropy);
+    lights += max(uSunFillLightColor, vec3(0.0)) * (uSunFillLightCastsShadows != 0 ? 1.0 - shadow : 1.0) *
+        fogPhase(dot(safeDirection(uSunFillLightDir, vec3(0.0, 1.0, 0.0)), rayDirection), anisotropy);
+    lights += max(uMoonFillLightColor, vec3(0.0)) * (uMoonFillLightCastsShadows != 0 ? 1.0 - shadow : 1.0) *
+        fogPhase(dot(safeDirection(uMoonFillLightDir, vec3(0.0, 1.0, 0.0)), rayDirection), anisotropy);
+
+    for (int i = 0; i < uPointLightCount && i < FOG_MAX_POINT_LIGHTS; i++) {
+        vec3 toLight = uPointLightPos[i] - world;
+        float dist = length(toLight);
+        float range = uPointLightRange[i];
+        if (range <= 0.0 || dist >= range || dist < 0.0001) continue;
+        float attenuation = clamp(1.0 - (dist / range), 0.0, 1.0);
+        attenuation *= attenuation;
+        if (uPointLightRealisticFalloff[i] > 0) {
+            float distanceRatio = dist / max(range, 0.0001);
+            float distanceRatio2 = distanceRatio * distanceRatio;
+            float window = clamp(1.0 - distanceRatio2 * distanceRatio2, 0.0, 1.0);
+            attenuation = window * window / (dist * dist + 1.0);
+        }
+        vec3 lightDir = toLight / dist;
+        float spot = 1.0;
+        if (uPointLightSpotCosOuter[i] > 0.0) {
+            float cosToPoint = dot(-lightDir, uPointLightDir[i]);
+            if (cosToPoint <= uPointLightSpotCosInner[i]) continue;
+            if (cosToPoint < uPointLightSpotCosOuter[i]) {
+                float t = (cosToPoint - uPointLightSpotCosInner[i])
+                        / max(uPointLightSpotCosOuter[i] - uPointLightSpotCosInner[i], 0.0001);
+                spot = smoothstep(0.0, 1.0, t);
+            }
+        }
+        float pointShadow = fogPointShadow(uPointLightShadowIndex[i], world, uPointLightPos[i], range);
+        lights += max(uPointLightColor[i], vec3(0.0)) * max(uPointLightEnergy[i], 0.0) * attenuation * spot *
+            (1.0 - pointShadow) * fogPhase(dot(lightDir, rayDirection), anisotropy);
+    }
+    return max(uAmbient, vec3(0.0)) + lights / 3.14159265;
+}
+
+void fogVolumeMarch()
+{
+    GiAlbedo = vec4(0.0);
+    GiRadiance = vec4(0.0);
+    OutlineNormal = vec4(0.0);
+    vec3 toFragment = vFragPos - uCameraPosition;
+    float fragmentDistance = length(toFragment);
+    vec3 direction = toFragment / max(fragmentDistance, 1e-6);
+
+    ivec2 texel = ivec2(gl_FragCoord.xy - uFogOrigin);
+    vec4 range = texelFetch(uFogRange, texel, 0);
+    bool hasFront = range.a < 1e29;
+    bool hasBack = range.r > 0.0;
+    bool outward = gl_FrontFacing != uFogInvertFaces;
+    float tolerance = 1e-3 * max(fragmentDistance, 1.0);
+    // Exactly one fragment per pixel marches. With a front surface that is the nearest outward-facing one; without
+    // one the camera is inside, the farthest inward-facing surface owns the pixel and the march starts at the eye.
+    float entryDistance = hasFront ? range.a : 0.0;
+    float exitDistance = range.r;
+    bool owner = hasFront
+        ? outward && hasBack && abs(fragmentDistance - range.a) <= tolerance
+        : !outward && hasBack && abs(fragmentDistance - range.r) <= tolerance;
+    // One discard only: several discards inside nested branches drop whole triangle-shaped pixel groups on some drivers.
+    if (!owner) discard;
+
+    float sceneDistance = 1e30;
+    float sceneDepth = texelFetch(uFogSceneDepth, texel, 0).r;
+    if (sceneDepth < 1.0) {
+        vec2 size = vec2(textureSize(uFogSceneDepth, 0));
+        vec4 scenePoint = uFogInverseViewProj * vec4((vec2(texel) + 0.5) / size * 2.0 - 1.0, sceneDepth * 2.0 - 1.0, 1.0);
+        sceneDistance = length(scenePoint.xyz / scenePoint.w - uCameraPosition);
+    }
+    bool exitBoundary = exitDistance <= sceneDistance;
+    float segmentLength = min(exitDistance, sceneDistance) - entryDistance;
+    if (segmentLength <= 1e-4) discard;
+
+    mat4 inverseModel = inverse(uModel);
+    vec4 settings = readShaderGraphVolumeSettings();
+    vec3 positionScale = settings.w > 0.5 ? graphMatrixScale(uModel) : vec3(1.0);
+    int steps = clamp(int(ceil(segmentLength / FOG_STEP_SIZE)), 1, FOG_MAX_STEPS);
+    float stepLength = segmentLength / float(steps);
+    // Screen-space dither hides the stepping; it is a pure function of the pixel, so frames repeat exactly.
+    float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    vec3 throughput = vec3(1.0);
+    vec3 radiance = vec3(0.0);
+    vec3 cachedCenter = vec3(1e30);
+    FogSample volume = FogSample(0.0, vec3(0.0), vec3(1.0), vec3(0.0), 0.0, 0.0);
+    for (int i = 0; i < FOG_MAX_STEPS; i++) {
+        if (i >= steps) break;
+        float t = (float(i) + jitter) * stepLength;
+        vec3 point = uCameraPosition + direction * (entryDistance + t);
+        vec3 rawLocal = (inverseModel * vec4(point, 1.0)).xyz;
+        vec3 center = settings.x > 1e-4
+            ? fogSnapToVoxel(rawLocal * positionScale, settings.x, settings.y) / positionScale : rawLocal;
+        // Density is constant inside a voxel, so consecutive steps in one voxel share the graph evaluation.
+        if (any(notEqual(center, cachedCenter))) {
+            volume = fogEvaluate(center, direction, positionScale);
+            cachedCenter = center;
+        }
+        float factor = fogStepFactor(settings, volume.softness, rawLocal.y, t, segmentLength, hasFront, exitBoundary);
+        vec3 sigmaTotal = volume.sigmaTotal * factor;
+        float sigmaScatter = volume.sigmaScatter * factor;
+        vec3 source = volume.emission * factor;
+        if (sigmaScatter > 1e-6)
+            source += sigmaScatter * volume.albedo * fogIncidentLight(point, direction, volume.anisotropy);
+        vec3 stepTransmittance = exp(-sigmaTotal * stepLength);
+        vec3 weight = mix(vec3(stepLength), (vec3(1.0) - stepTransmittance) / max(sigmaTotal, vec3(1e-6)),
+                          step(vec3(1e-6), sigmaTotal));
+        radiance += throughput * source * weight;
+        throughput *= stepTransmittance;
+        if (max(throughput.r, max(throughput.g, throughput.b)) < 0.003) {
+            throughput = vec3(0.0);
+            break;
+        }
+    }
+
+    // Distance and height fog hide the medium the same way they hide surfaces.
+    if (uFogEnabled) {
+        vec3 middle = uCameraPosition + direction * (entryDistance + 0.5 * segmentLength);
+        float distanceFog = smoothstep(max(uFogDistance - uFogFadeSize, 0.0), max(uFogDistance, 1.0),
+                                       (entryDistance + 0.5 * segmentLength) * 64.0);
+        float visible = 1.0 - distanceFog;
+        if (uHeightFogEnabled) {
+            float heightStart = uFogHeight + uHeightFogOffset;
+            visible *= smoothstep(heightStart, heightStart + max(uHeightFogSize, 1.0), middle.y * 64.0);
+        }
+        radiance *= visible;
+        throughput = mix(vec3(1.0), throughput, visible);
+    }
+
+    // The scene is display-encoded, so the transmittance is applied in that space (exact for a power curve).
+    vec3 displayTransmittance = pow(max(throughput, vec3(0.0)), vec3(1.0 / 2.2));
+    float minTransmittance = min(displayTransmittance.r, min(displayTransmittance.g, displayTransmittance.b));
+    vec3 premultiplied = toDisplay(radiance);
+    // Blending scales the scene behind by the least absorbed channel; coloured extinction adds the remainder.
+    if (uShaderGraphSceneColorAvailable)
+        premultiplied += (displayTransmittance - minTransmittance) * texelFetch(uShaderGraphSceneColor, texel, 0).rgb;
+    FragColor = vec4(premultiplied, 1.0 - minTransmittance);
+}
+
 void main() {
+    if (uShaderGraphEnabled != 0 && uFogVolumeRangePass) {
+        float surfaceDistance = length(vFragPos - uCameraPosition);
+        bool outward = gl_FrontFacing != uFogInvertFaces;
+        FragColor = outward ? vec4(0.0, 0.0, 0.0, surfaceDistance) : vec4(surfaceDistance, 0.0, 0.0, 1e30);
+        return;
+    }
     GiAlbedo = vec4(0.0);
     GiRadiance = vec4(0.0);
     OutlineNormal = vec4(0.0);
@@ -522,6 +786,10 @@ void main() {
             solidCol = n.z > 0.0 ? vec3(0.25, 0.45, 1.0) : vec3(1.0, 0.95, 0.25);
         }
         FragColor = vec4(solidCol, 1.0);
+        return;
+    }
+    if (uShaderGraphEnabled != 0 && uFogVolumeMarch && (uShaderGraphFlags & GRAPH_VOLUME) != 0) {
+        fogVolumeMarch();
         return;
     }
 
