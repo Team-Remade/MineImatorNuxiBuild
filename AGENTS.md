@@ -169,15 +169,18 @@ Coverage and prerequisites:
   (exact pixels, merged draw/mesh counts, interleaved meshes staying in scene order, opt-in
   reordering), plus a mutation check that changes every public `Mesh` and `StandardMaterial`
   setting and requires `Mesh.CanInstanceWith` to notice it.
-- `--veldrid-glsl`: no GPU; every fullscreen, sky and background shader converts through
-  `VeldridGlslAdapter` and compiles to SPIR-V, and the std140 layout rules hold. It also runs in
-  the default suite.
+- `--veldrid-glsl`: no GPU; every fullscreen, sky, background, scene and shadow shader converts
+  through `VeldridGlslAdapter` and compiles to SPIR-V, and the std140 layout rules hold. It also
+  checks conditional shader branches, named uniform blocks and literal-index sampler arrays, and
+  runs in the default suite.
 - `--veldrid-post-graphics`: OpenGL 3.3 plus Direct3D 11 and Vulkan (a backend the machine does
   not support is skipped). Veldrid pixelate against its CPU reference; the scene renderer's
   row order against OpenGL with a lopsided quad (centre pixels cannot catch a vertical flip);
-  every `VeldridCameraEffects` effect against the production `Viewport.Apply*Pass` on the same
-  image; and the sky (procedural, sphere, box) and background image against `RenderSky` and
-  `RenderBackgroundPlane` with injected synthetic textures. Most effects match within one level.
+  static geometry buffer reuse and `Mesh.GeometryVersion` invalidation; `VeldridCameraEffects`
+  passes for Bloom, Depth of Field, Glow, Lens Dirt, Watermark and the other camera effects against
+  production `Viewport.Apply*Pass` methods on the same image; and the sky (procedural, sphere, box)
+  and background image against `RenderSky` and `RenderBackgroundPlane` with injected synthetic
+  textures. Most effects match within one level; Lens Dirt allows two levels.
   Film grain, FXAA and the star field are allowed a small fraction of outlier pixels because
   their hashes and thresholds round differently on each API. All backends share one OpenGL
   context, because the application caches compiled programs in statics tied to the context
@@ -668,9 +671,11 @@ dotnet run --project .\MineImatorSimplyRemade\MineImatorSimplyRemade.csproj -- -
 Direct3D 11 is Windows-only. This is an incremental migration, not a GL-free
 renderer. Veldrid renders the main viewport (sky, background image, geometry,
 lighting, fog and the camera effects listed below) into an offscreen target and
-submits real GPU draw commands. The finished image is read back and uploaded into
-the existing OpenGL UI. The window, texture and mesh uploads, editor overlays,
-camera previews, exports and picking still use OpenGL.
+submits real GPU draw commands. Static, non-deforming mesh buffers persist across
+frames and are invalidated by `Mesh.GeometryVersion`; dynamic geometry stays
+frame-scoped. The finished image is read back and uploaded into the existing
+OpenGL UI. The window, texture and mesh uploads, editor overlays, camera previews,
+exports and picking still use OpenGL.
 
 What the Veldrid viewport covers:
 
@@ -682,22 +687,28 @@ What the Veldrid viewport covers:
 - Camera effects (`VeldridCameraEffects`, assembled by `Viewport.BuildVeldridEffects` in the
   OpenGL order): transparent-background alpha resolve, colour management, colour correction
   with the camera material, vignette, chromatic aberration, distort, heat distort, FXAA, film
-  grain, pixelate and cinematic bars.
+  grain, pixelate, Bloom, Depth of Field, watermark and cinematic bars. Bloom and Depth of Field
+  match their production OpenGL passes within two channel levels on the graphics regression;
+  watermark texture pixels match within one level.
 - A frame switches to the OpenGL scene, with the reason shown above the viewport, for custom
-  shader-graph materials and for the Outline, Bloom, Depth of Field and Lens Dirt effects
-  (`Viewport.GetVeldridFallbackReason`). The watermark, and the cinematic bars drawn over it,
-  still run on OpenGL after the readback.
+  shader-graph materials, Outline and Lens Dirt (`Viewport.GetVeldridFallbackReason`). Watermark
+  and cinematic bars use OpenGL only when the configured watermark image cannot be imported.
 
 How the port works:
 
 - `VeldridGlslAdapter` rewrites the project's GLSL 3.3 sources (loose uniforms, `sampler2D`,
-  implicit locations, `gl_VertexID`) into the Vulkan GLSL that Veldrid.SPIRV compiles. Shader
+  named std140 uniform blocks, literal-index sampler arrays, conditional branches, implicit
+  locations, `gl_VertexID`) into the Vulkan GLSL that Veldrid.SPIRV compiles. Shader
   bodies stay untouched, so one `.frag` file feeds both renderers until the OpenGL one is
   removed. Loose uniforms become one std140 block, each sampler becomes a texture and sampler
   pair, `bool` uniforms are stored as `uint`, uniform initializers become defaults, sampler
   parameters of helper functions are split into texture and sampler, and identifiers that GLSL
-  4.x reserves (`sample`, `filter`, ...) are renamed. Uniform blocks, interface blocks and
-  sampler arrays are not supported yet.
+  4.x reserves (`sample`, `filter`, ...) are renamed. Sampler arrays require literal indices and
+  share one sampler across their separate texture bindings; interface blocks and sampler arrays
+  passed to helper functions are not supported. The production `simple.*` shaders compile through
+  the adapter with the shader-graph interpreter disabled, but the live scene renderer still uses
+  its existing equivalent shader and per-mesh writer; the real shader and its full uniform writer
+  are not wired into the scene yet.
 - Veldrid targets are stored in OpenGL row order (row zero is the bottom of the picture). The
   adapter and the scene vertex shader negate clip-space Y when the device's UV origin is
   top-left (`VeldridFullscreenPass.FlipClipY`), and the scene pipelines use the matching front
@@ -713,8 +724,9 @@ How the port works:
   them (`_skyTextureRevision`, `_backgroundTextureRevision`). Mesh textures are still copied from
   OpenGL every frame; moving texture ownership to Veldrid is a prerequisite for removing OpenGL.
 - Direct3D cannot compile implicit-derivative lookups (`texture()`) inside divergent loops, so
-  `sky.frag` uses `textureLod(..., 0.0)` for its mipmap-less cloud texture. Use explicit levels
-  for lookups inside loops in any shader Veldrid must run.
+  `sky.frag` and the directional/point shadow lookups in `simple.frag` use `textureLod(..., 0.0)`
+  for their mipmap-less textures. Use explicit levels for lookups inside loops in any shader
+  Veldrid must run.
 
 To port another OpenGL effect: add a builder to `VeldridCameraEffects` that mirrors the OpenGL
 pass's settings, skip rules and uniforms; add a case to `VeldridEffectParity`
@@ -722,11 +734,10 @@ pass's settings, skip rules and uniforms; add a case to `VeldridEffectParity`
 `Viewport.BuildVeldridEffects` (or remove its type from `GetVeldridFallbackReason`); and list new
 shaders in `VeldridFullscreenShaders` so the CPU compile check covers them.
 
-The next large steps are bloom, glow, lens dirt and depth of field (multi-pass and depth-based;
-the scene depth is already a sampleable `R32_Float` texture), shadows (directional and
-point-light maps plus the shadow terms in `simple.frag`) and, to retire the duplicated scene
-shader, running `simple.frag` itself through the adapter (that needs uniform block and sampler
-array support and a Veldrid writer for `Mesh`'s uniforms).
+The next large steps are wiring the compiled `simple.*` shader into the scene pass with a complete
+`Mesh` uniform writer and MRT outputs; adding directional/point shadow maps and their caster
+passes; then porting AO, indirect lighting, glow, Outline and Lens Dirt. NuxT compute, shader graphs
+and fog volumes, previews, exports, picking and editor overlays remain outside this viewport port.
 
 The bridge incurs GPU synchronization and CPU-transfer overhead and is not a performance
 upgrade. The viewport labels the experimental backend, and initialization or rendering failures

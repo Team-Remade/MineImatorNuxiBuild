@@ -1,6 +1,8 @@
 using GlmSharp;
 using MineImatorSimplyRemade.core.mdl.material.materials;
+using MineImatorSimplyRemade.core.ui.Panels;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
+using Veldrid;
 
 namespace MineImatorSimplyRemade.core.graphics;
 
@@ -12,6 +14,7 @@ namespace MineImatorSimplyRemade.core.graphics;
 /// </summary>
 internal static class VeldridCameraEffects
 {
+    private const PixelFormat HdrScratchFormat = PixelFormat.R16_G16_B16_A16_Float;
     /// <summary>Samples <c>uScene</c> from the current image, lets the caller set uniforms, then writes the spare image.</summary>
     private sealed class PassEffect(string shader, Action<VeldridFullscreenPass, VeldridPostContext> configure) : IVeldridPostEffect
     {
@@ -35,6 +38,174 @@ internal static class VeldridCameraEffects
         }
     }
 
+    private sealed class DepthOfFieldEffect(DepthOfFieldSettings settings, CameraSceneObject camera, float near, float far) : IVeldridPostEffect
+    {
+        public void Apply(VeldridPostContext context)
+        {
+            if (context.Scene.DepthTextureView == null) return;
+            var pass = context.Processor.GetPass("depth_of_field.frag");
+            pass.SetTexture("uScene", context.Current.SampleableTextureView, context.Processor.LinearClamp);
+            pass.SetTexture("uDepth", context.Scene.DepthTextureView, context.Processor.PointClamp);
+            pass.Set("uResolution", Resolution(context));
+            pass.Set("uClip", new vec2(near, far));
+            pass.Set("uBlades", new vec3(Math.Clamp(camera.BladeCount, 0, 16), camera.BladeAngle % 360f,
+                Math.Clamp(camera.BladeStretch, -100f, 100f)));
+            pass.Set("uFocus", new vec4(MathF.Max(0f, settings.Depth), MathF.Max(0f, settings.FocusRange),
+                MathF.Max(0f, settings.FadeSize), Math.Clamp(settings.BlurSize, 0f, 100f)));
+            pass.Set("uBokeh", new vec4(Math.Clamp(settings.AnamorphicRatio, 0.1f, 10f),
+                Math.Clamp(settings.EdgeHighlight, 0f, 1f), Math.Clamp(settings.HighlightThreshold, 0f, 1f),
+                Math.Clamp(settings.HighlightStrength, 0f, 10f)));
+            pass.Set("uColorFringe", settings.ColorFringe ? 1 : 0);
+            pass.Set("uFringeAngles", new vec3(settings.RedAngle, settings.GreenAngle, settings.BlueAngle));
+            pass.Set("uFringeOffsets", new vec3(settings.RedOffset, settings.GreenOffset, settings.BlueOffset));
+            context.DrawToOther(pass);
+        }
+    }
+
+    private sealed class BloomEffect(BloomSettings settings, bool transparent, bool captureLensDirt) : IVeldridPostEffect
+    {
+        public void Apply(VeldridPostContext context)
+        {
+            var bloom = context.Scratch(0, HdrScratchFormat);
+            var ping = context.Scratch(1, HdrScratchFormat);
+            var pass = context.Processor.GetPass("bloom.frag");
+            void SetCommon(TextureView source, TextureView bloomSource, int mode)
+            {
+                pass.SetTexture("uScene", source, context.Processor.LinearClamp);
+                pass.SetTexture("uBloom", bloomSource, context.Processor.LinearClamp);
+                pass.Set("uTexelSize", TexelSize(context));
+                pass.Set("uThreshold", settings.Threshold / 100f);
+                pass.Set("uIntensity", settings.Intensity / 100f);
+                pass.Set("uBlendColor", new vec3(Math.Clamp(settings.BlendColorR, 0f, 1f),
+                    Math.Clamp(settings.BlendColorG, 0f, 1f), Math.Clamp(settings.BlendColorB, 0f, 1f)));
+                pass.Set("uBlendMode", Math.Clamp((int)settings.BlendMode, 0, 4));
+                pass.Set("uTransparentOutput", transparent);
+                pass.Set("uPass", mode);
+            }
+
+            SetCommon(context.Current.SampleableTextureView, context.Current.SampleableTextureView, 0);
+            context.DrawTo(pass, bloom);
+
+            float radius = MathF.Abs(settings.Radius) * 0.0004f * Math.Min(context.Width, context.Height);
+            float ratio = MathF.Max(MathF.Abs(settings.AnamorphicRatio), 0.001f) / 100f;
+            float horizontal = radius * MathF.Sqrt(ratio);
+            float vertical = radius / MathF.Sqrt(ratio);
+            int stages = Math.Clamp((int)MathF.Ceiling(MathF.Log2(MathF.Max(1f, MathF.Max(horizontal, vertical)))) + 1, 1, 10);
+            for (int stage = 0; stage < stages && radius > 0f; stage++)
+            {
+                float scale = 0.5f / MathF.Pow(2f, stages - stage - 1);
+                SetCommon(bloom.SampleableTextureView, bloom.SampleableTextureView, 1);
+                pass.Set("uStep", new vec2(horizontal * scale / context.Width, 0f));
+                context.DrawTo(pass, ping);
+
+                SetCommon(ping.SampleableTextureView, ping.SampleableTextureView, 1);
+                pass.Set("uStep", new vec2(0f, vertical * scale / context.Height));
+                context.DrawTo(pass, bloom);
+            }
+
+            if (captureLensDirt)
+            {
+                SetCommon(bloom.SampleableTextureView, bloom.SampleableTextureView, 3);
+                context.DrawTo(pass, context.Scratch(5, HdrScratchFormat));
+            }
+
+            SetCommon(context.Current.SampleableTextureView, bloom.SampleableTextureView, 2);
+            context.DrawToOther(pass);
+        }
+    }
+
+    private sealed class GlowEffect(float strength, float size, bool transparent, bool capture) : IVeldridPostEffect
+    {
+        public void Apply(VeldridPostContext context)
+        {
+            var glow = context.Scratch(0, HdrScratchFormat);
+            var ping = context.Scratch(1, HdrScratchFormat);
+            var pass = context.Processor.GetPass("glow.frag");
+            void SetCommon(TextureView source, int mode)
+            {
+                pass.SetTexture("uScene", source, context.Processor.LinearClamp);
+                pass.SetTexture("uBaseScene", context.Current.SampleableTextureView, context.Processor.LinearClamp);
+                pass.Set("uTexelSize", TexelSize(context));
+                pass.Set("uStrength", 1f);
+                pass.Set("uSize", size);
+                pass.Set("uDirection", new vec2(1f, 0f));
+                pass.Set("uMode", mode);
+                pass.Set("uTransparentOutput", transparent);
+            }
+
+            SetCommon(context.Current.SampleableTextureView, 0);
+            context.DrawTo(pass, glow);
+            for (int i = 0; i < 3; i++)
+            {
+                float radius = size / (1f + 1.333f * i);
+                SetCommon(glow.SampleableTextureView, 1);
+                pass.Set("uSize", radius);
+                pass.Set("uDirection", new vec2(1f, 0f));
+                context.DrawTo(pass, ping);
+
+                SetCommon(ping.SampleableTextureView, 1);
+                pass.Set("uSize", radius);
+                pass.Set("uDirection", new vec2(0f, 1f));
+                context.DrawTo(pass, glow);
+            }
+
+            if (capture) context.Copy(glow, context.Scratch(2, HdrScratchFormat));
+            SetCommon(glow.SampleableTextureView, 2);
+            pass.Set("uStrength", strength);
+            if (transparent)
+                context.DrawToOther(pass);
+            else
+                context.DrawOverCurrent(pass, VeldridFullscreenPass.BlendMode.Additive);
+        }
+    }
+
+    private sealed class LensDirtEffect(LensDirtSettings settings, VeldridTexture dirt, float glowStrength,
+        bool transparent, bool useBloom, bool useGlow) : IVeldridPostEffect
+    {
+        public void Apply(VeldridPostContext context)
+        {
+            var extracted = context.Scratch(3, HdrScratchFormat);
+            var ping = context.Scratch(4, HdrScratchFormat);
+            var pass = context.Processor.GetPass("lens_dirt.frag");
+            var glow = useGlow ? context.Scratch(2, HdrScratchFormat).SampleableTextureView : context.Current.SampleableTextureView;
+            var bloom = useBloom ? context.Scratch(5, HdrScratchFormat).SampleableTextureView : context.Current.SampleableTextureView;
+            void SetCommon(TextureView scene, int mode)
+            {
+                pass.SetTexture("uScene", scene, context.Processor.LinearClamp);
+                pass.SetTexture("uGlow", glow, context.Processor.LinearClamp);
+                pass.SetTexture("uBloom", bloom, context.Processor.LinearClamp);
+                pass.SetTexture("uDirt", dirt.TextureView, context.Processor.LinearClamp);
+                pass.Set("uTexelSize", TexelSize(context));
+                pass.Set("uGlowStrength", glowStrength);
+                pass.Set("uAffectedByBloom", useBloom);
+                pass.Set("uAffectedByGlow", useGlow);
+                pass.Set("uIntensity", Math.Clamp(settings.Intensity, 0f, 1000f) / 100f);
+                pass.Set("uPower", Math.Clamp(settings.Power, 1f, 1000f) / 100f);
+                pass.Set("uTransparentOutput", transparent);
+                pass.Set("uPass", mode);
+            }
+
+            SetCommon(context.Current.SampleableTextureView, 0);
+            context.DrawTo(pass, extracted);
+            float radius = Math.Clamp(settings.Radius, 0f, 100f) * 0.0004f * Math.Min(context.Width, context.Height);
+            int stages = Math.Clamp((int)MathF.Ceiling(MathF.Log2(MathF.Max(1f, radius))) + 1, 1, 10);
+            for (int stage = 0; stage < stages && radius > 0f; stage++)
+            {
+                float step = radius * 0.5f / MathF.Pow(2f, stages - stage - 1);
+                SetCommon(extracted.SampleableTextureView, 1);
+                pass.Set("uStep", new vec2(step / context.Width, 0f));
+                context.DrawTo(pass, ping);
+                SetCommon(ping.SampleableTextureView, 1);
+                pass.Set("uStep", new vec2(0f, step / context.Height));
+                context.DrawTo(pass, extracted);
+            }
+
+            SetCommon(context.Current.SampleableTextureView, 2);
+            pass.SetTexture("uBloom", extracted.SampleableTextureView, context.Processor.LinearClamp);
+            context.DrawToOther(pass);
+        }
+    }
+
     private static vec2 Resolution(VeldridPostContext context) => new(context.Width, context.Height);
 
     private static vec2 TexelSize(VeldridPostContext context) => new(1f / context.Width, 1f / context.Height);
@@ -43,6 +214,65 @@ internal static class VeldridCameraEffects
         camera == null
             ? []
             : camera.Effects.Where(effect => effect.Enabled && effect.Type == type);
+
+    public static List<IVeldridPostEffect> DepthOfField(CameraSceneObject? camera, float near, float far)
+    {
+        var effects = new List<IVeldridPostEffect>();
+        if (camera == null || !float.IsFinite(near) || !float.IsFinite(far) || far <= near) return effects;
+        foreach (var effect in Enabled(camera, CameraEffectType.DepthOfField))
+            if (effect.DepthOfField.BlurSize > 0f)
+                effects.Add(new DepthOfFieldEffect(effect.DepthOfField, camera, near, far));
+        return effects;
+    }
+
+    public static List<IVeldridPostEffect> Bloom(CameraSceneObject? camera, bool transparent, bool captureLensDirt = false)
+    {
+        var effects = new List<IVeldridPostEffect>();
+        foreach (var effect in Enabled(camera, CameraEffectType.Bloom))
+        {
+            var settings = effect.Bloom;
+            if (settings.Intensity == 0f) continue;
+            foreach (var control in BloomSettings.Controls)
+                if (!float.IsFinite(settings.GetValue(control.Key)))
+                    throw new InvalidDataException($"Bloom {control.Key} must be finite.");
+            effects.Add(new BloomEffect(settings, transparent, captureLensDirt));
+        }
+        return effects;
+    }
+
+    public static IVeldridPostEffect? Glow(PropertiesPanel? settings, bool capture)
+    {
+        if (settings is not { GlowEnabled: true }) return null;
+        float strength = Math.Clamp(settings.GlowStrength, 0f, 2f);
+        float size = Math.Clamp(settings.GlowSize, 0f, 20f);
+        return strength > 0f && size > 0f
+            ? new GlowEffect(strength, size, settings.TransparentBackground, capture)
+            : null;
+    }
+
+    public static IVeldridPostEffect LensDirt(LensDirtSettings settings, VeldridTexture dirt,
+        float glowStrength, bool transparent, bool useBloom, bool useGlow) =>
+        new LensDirtEffect(settings, dirt, glowStrength, transparent, useBloom, useGlow);
+
+    public static IVeldridPostEffect Watermark(VeldridTexture image, float width, float height, float scale,
+        float padding, int horizontalAlignment, int verticalAlignment, float opacity) =>
+        new PassEffect("watermark.frag", (pass, context) =>
+        {
+            float markWidth = image.Width * scale, markHeight = image.Height * scale;
+            float x = Align(width, markWidth, horizontalAlignment, padding);
+            float y = Align(height, markHeight, verticalAlignment, padding);
+            pass.Set("uFrameSize", new vec2(width, height));
+            pass.Set("uRect", new vec4(x, y, markWidth, markHeight));
+            pass.Set("uOpacity", Math.Clamp(opacity, 0f, 1f));
+            pass.SetTexture("uWatermark", image.TextureView, context.Processor.LinearClamp);
+        });
+
+    private static float Align(float frameSize, float markSize, int alignment, float padding) => alignment switch
+    {
+        0 => padding,
+        1 => (frameSize - markSize) * 0.5f,
+        _ => frameSize - markSize - padding
+    };
 
     private static void RequireFinite(string label, IEnumerable<string> keys, Func<string, float> value)
     {

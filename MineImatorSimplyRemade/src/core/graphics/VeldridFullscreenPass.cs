@@ -30,7 +30,9 @@ public sealed class VeldridFullscreenPass : IDisposable
         /// <summary>Straight alpha over the target: SrcAlpha/InvSrcAlpha colour, One/InvSrcAlpha alpha.</summary>
         Alpha,
         /// <summary>Premultiplied alpha over the target.</summary>
-        Premultiplied
+        Premultiplied,
+        /// <summary>Additive colour accumulation without changing the target alpha.</summary>
+        Additive
     }
 
     private readonly GraphicsDevice _device;
@@ -40,7 +42,8 @@ public sealed class VeldridFullscreenPass : IDisposable
     private readonly ResourceLayout _layout;
     private readonly byte[] _uniformData;
     private readonly Dictionary<string, VeldridGlslAdapter.UniformMember> _uniforms = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, int> _samplerIndices = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, VeldridGlslAdapter.SamplerMember> _samplerMembers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DeviceBuffer?> _uniformBlockBuffers = new(StringComparer.Ordinal);
     private readonly TextureView?[] _textures;
     private readonly Sampler?[] _samplers;
     private readonly Dictionary<(OutputDescription Output, BlendMode Blend), Pipeline> _pipelines = new();
@@ -76,9 +79,11 @@ public sealed class VeldridFullscreenPass : IDisposable
         _uniformData = new byte[Math.Max(16, _program.UniformSize)];
         foreach (var member in _program.Uniforms) _uniforms[member.Name] = member;
         ApplyDefaults();
-        _textures = new TextureView?[_program.Samplers.Count];
+        foreach (var block in _program.UniformBlocks)
+            if (!_uniformBlockBuffers.ContainsKey(block.Name)) _uniformBlockBuffers.Add(block.Name, null);
+        _textures = new TextureView?[_program.Samplers.Sum(sampler => sampler.ArrayLength)];
         _samplers = new Sampler?[_program.Samplers.Count];
-        for (int i = 0; i < _program.Samplers.Count; i++) _samplerIndices[_program.Samplers[i].Name] = i;
+        for (int i = 0; i < _program.Samplers.Count; i++) _samplerMembers[_program.Samplers[i].Name] = _program.Samplers[i];
     }
 
     /// <summary>Compiles an adapted program; failures report the converted source with line numbers.</summary>
@@ -108,7 +113,7 @@ public sealed class VeldridFullscreenPass : IDisposable
 
     public bool HasUniform(string name) => _uniforms.ContainsKey(name);
 
-    public bool HasTexture(string name) => _samplerIndices.ContainsKey(name);
+    public bool HasTexture(string name) => _samplerMembers.ContainsKey(name);
 
     /// <summary>
     /// Resets every uniform to its GLSL initializer (zero when it has none), so a reused pass never
@@ -228,10 +233,30 @@ public sealed class VeldridFullscreenPass : IDisposable
 
     public void SetTexture(string name, TextureView view, Sampler sampler)
     {
-        if (!_samplerIndices.TryGetValue(name, out int index))
+        if (!_samplerMembers.TryGetValue(name, out var member))
             throw new ArgumentException($"Shader '{Name}' declares no sampler '{name}'.", nameof(name));
-        _textures[index] = view ?? throw new ArgumentNullException(nameof(view));
-        _samplers[index] = sampler ?? throw new ArgumentNullException(nameof(sampler));
+        if (member.ArrayLength != 1)
+            throw new ArgumentException($"Sampler '{name}' of shader '{Name}' is an array; specify an element index.", nameof(name));
+        SetTexture(name, 0, view, sampler);
+    }
+
+    public void SetTexture(string name, int element, TextureView view, Sampler sampler)
+    {
+        if (!_samplerMembers.TryGetValue(name, out var member))
+            throw new ArgumentException($"Shader '{Name}' declares no sampler '{name}'.", nameof(name));
+        if ((uint)element >= (uint)member.ArrayLength)
+            throw new ArgumentOutOfRangeException(nameof(element), $"Sampler '{name}' has {member.ArrayLength} element(s).");
+        if (_samplers[member.SamplerSlot] is { } existing && !ReferenceEquals(existing, sampler))
+            throw new ArgumentException($"Sampler array '{name}' shares one sampler across all elements.", nameof(sampler));
+        _textures[member.TextureSlot + element] = view ?? throw new ArgumentNullException(nameof(view));
+        _samplers[member.SamplerSlot] = sampler ?? throw new ArgumentNullException(nameof(sampler));
+    }
+
+    public void SetUniformBlock(string name, DeviceBuffer buffer)
+    {
+        if (!_uniformBlockBuffers.ContainsKey(name))
+            throw new ArgumentException($"Shader '{Name}' declares no uniform block '{name}'.", nameof(name));
+        _uniformBlockBuffers[name] = buffer ?? throw new ArgumentNullException(nameof(buffer));
     }
 
     /// <summary>
@@ -244,19 +269,32 @@ public sealed class VeldridFullscreenPass : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if ((_vertexLayout != null) != (vertexBuffer != null))
             throw new InvalidOperationException($"Shader '{Name}' {(_vertexLayout != null ? "needs" : "takes no")} a vertex buffer.");
-        var resources = new List<BindableResource>(1 + _textures.Length * 2);
+        var resources = new List<BindableResource>(1 + _program.UniformBlocks.Count + _textures.Length + _samplers.Length);
         if (_program.HasUniforms)
         {
             var buffer = RentUniformBuffer();
             _device.UpdateBuffer(buffer, 0, _uniformData);
             resources.Add(buffer);
         }
-        for (int i = 0; i < _textures.Length; i++)
+        foreach (var block in _program.UniformBlocks)
         {
-            if (_textures[i] == null || _samplers[i] == null)
-                throw new InvalidOperationException($"Shader '{Name}' sampler '{_program.Samplers[i].Name}' has no texture bound.");
-            resources.Add(_textures[i]!);
-            resources.Add(_samplers[i]!);
+            if (_uniformBlockBuffers[block.Name] == null)
+                throw new InvalidOperationException($"Shader '{Name}' uniform block '{block.Name}' has no buffer bound.");
+            resources.Add(_uniformBlockBuffers[block.Name]!);
+        }
+        foreach (var sampler in _program.Samplers)
+        {
+            for (int element = 0; element < sampler.ArrayLength; element++)
+            {
+                var texture = _textures[sampler.TextureSlot + element];
+                if (texture == null)
+                    throw new InvalidOperationException($"Shader '{Name}' sampler '{sampler.Name}' element {element} has no texture bound.");
+                resources.Add(texture);
+            }
+            var boundSampler = _samplers[sampler.SamplerSlot];
+            if (boundSampler == null)
+                throw new InvalidOperationException($"Shader '{Name}' sampler '{sampler.Name}' has no sampler bound.");
+            resources.Add(boundSampler);
         }
         var set = _device.ResourceFactory.CreateResourceSet(new ResourceSetDescription(_layout, resources.ToArray()));
         _frameSets.Add(set);
@@ -286,6 +324,8 @@ public sealed class VeldridFullscreenPass : IDisposable
                 BlendFunction.Add, BlendFactor.One, BlendFactor.InverseSourceAlpha, BlendFunction.Add),
             BlendMode.Premultiplied => new BlendAttachmentDescription(true, BlendFactor.One, BlendFactor.InverseSourceAlpha,
                 BlendFunction.Add, BlendFactor.One, BlendFactor.InverseSourceAlpha, BlendFunction.Add),
+            BlendMode.Additive => new BlendAttachmentDescription(true, BlendFactor.One, BlendFactor.One,
+                BlendFunction.Add, BlendFactor.Zero, BlendFactor.One, BlendFunction.Add),
             _ => BlendAttachmentDescription.OverrideBlend
         };
         var attachments = new BlendAttachmentDescription[Math.Max(1, output.ColorAttachments.Length)];

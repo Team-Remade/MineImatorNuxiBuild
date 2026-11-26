@@ -133,9 +133,13 @@ layout(location = 1) out vec4 GiAlbedo;
 layout(location = 2) out vec4 GiRadiance;
 layout(location = 3) out vec4 OutlineNormal;
 
+#ifndef NX_VELDRID_NO_SHADER_GRAPH
 #include "shader_graph.glsl"
+#endif
 // Copy of the scene drawn so far, captured before transmissive custom-shader surfaces.
+#ifndef NX_VELDRID_NO_SHADER_GRAPH
 uniform sampler2D uShaderGraphSceneColor;
+#endif
 uniform bool uShaderGraphSceneColorAvailable;
 // Fog volumes: the range pass records near/far surface distances, the march pass uses them with the scene depth.
 uniform bool uFogVolumeRangePass, uFogVolumeMarch, uFogInvertFaces;
@@ -197,10 +201,10 @@ vec4 directionalShadowDepths(vec2 uv, out vec4 weights)
     vec2 baseUv = (floor(texel) + 0.5) / size;
     vec2 stepUv = 1.0 / size;
     weights = shadowBilinearWeights(fract(texel));
-    return vec4(texture(uShadowMap, baseUv).r,
-                texture(uShadowMap, baseUv + vec2(stepUv.x, 0.0)).r,
-                texture(uShadowMap, baseUv + vec2(0.0, stepUv.y)).r,
-                texture(uShadowMap, baseUv + stepUv).r);
+    return vec4(textureLod(uShadowMap, baseUv, 0.0).r,
+                textureLod(uShadowMap, baseUv + vec2(stepUv.x, 0.0), 0.0).r,
+                textureLod(uShadowMap, baseUv + vec2(0.0, stepUv.y), 0.0).r,
+                textureLod(uShadowMap, baseUv + stepUv, 0.0).r);
 }
 
 float calculateShadow(vec3 norm, vec3 lightDir) {
@@ -240,14 +244,14 @@ float calculateShadow(vec3 norm, vec3 lightDir) {
 
 float samplePointShadowCube(int shadowIndex, vec3 lightToFrag)
 {
-    if (shadowIndex == 0) return texture(uPointShadowMaps[0], lightToFrag).r;
-    if (shadowIndex == 1) return texture(uPointShadowMaps[1], lightToFrag).r;
-    if (shadowIndex == 2) return texture(uPointShadowMaps[2], lightToFrag).r;
-    if (shadowIndex == 3) return texture(uPointShadowMaps[3], lightToFrag).r;
-    if (shadowIndex == 4) return texture(uPointShadowMaps[4], lightToFrag).r;
-    if (shadowIndex == 5) return texture(uPointShadowMaps[5], lightToFrag).r;
-    if (shadowIndex == 6) return texture(uPointShadowMaps[6], lightToFrag).r;
-    if (shadowIndex == 7) return texture(uPointShadowMaps[7], lightToFrag).r;
+    if (shadowIndex == 0) return textureLod(uPointShadowMaps[0], lightToFrag, 0.0).r;
+    if (shadowIndex == 1) return textureLod(uPointShadowMaps[1], lightToFrag, 0.0).r;
+    if (shadowIndex == 2) return textureLod(uPointShadowMaps[2], lightToFrag, 0.0).r;
+    if (shadowIndex == 3) return textureLod(uPointShadowMaps[3], lightToFrag, 0.0).r;
+    if (shadowIndex == 4) return textureLod(uPointShadowMaps[4], lightToFrag, 0.0).r;
+    if (shadowIndex == 5) return textureLod(uPointShadowMaps[5], lightToFrag, 0.0).r;
+    if (shadowIndex == 6) return textureLod(uPointShadowMaps[6], lightToFrag, 0.0).r;
+    if (shadowIndex == 7) return textureLod(uPointShadowMaps[7], lightToFrag, 0.0).r;
     return 1.0;
 }
 
@@ -511,6 +515,7 @@ vec3 mappedNormal(vec3 normal, vec2 uv, vec2 uvDx, vec2 uvDy)
 // or the scene depth, whichever is nearer, running the fog graph per step like the NuxT path tracer does.
 // Light is ambient plus every directional and (up to FOG_MAX_POINT_LIGHTS) point light with their shadows;
 // the result is premultiplied light plus the opacity of the medium for One / OneMinusSrcAlpha blending.
+#ifndef NX_VELDRID_NO_SHADER_GRAPH
 #define FOG_STEP_SIZE 0.25
 #define FOG_MAX_STEPS 64
 #define FOG_MAX_POINT_LIGHTS 8
@@ -754,14 +759,17 @@ void fogVolumeMarch()
         premultiplied += (displayTransmittance - minTransmittance) * texelFetch(uShaderGraphSceneColor, texel, 0).rgb;
     FragColor = vec4(premultiplied, 1.0 - minTransmittance);
 }
+#endif
 
 void main() {
+#ifndef NX_VELDRID_NO_SHADER_GRAPH
     if (uShaderGraphEnabled != 0 && uFogVolumeRangePass) {
         float surfaceDistance = length(vFragPos - uCameraPosition);
         bool outward = gl_FrontFacing != uFogInvertFaces;
         FragColor = outward ? vec4(0.0, 0.0, 0.0, surfaceDistance) : vec4(surfaceDistance, 0.0, 0.0, 1e30);
         return;
     }
+#endif
     GiAlbedo = vec4(0.0);
     GiRadiance = vec4(0.0);
     OutlineNormal = vec4(0.0);
@@ -788,12 +796,16 @@ void main() {
         FragColor = vec4(solidCol, 1.0);
         return;
     }
+#ifndef NX_VELDRID_NO_SHADER_GRAPH
     if (uShaderGraphEnabled != 0 && uFogVolumeMarch && (uShaderGraphFlags & GRAPH_VOLUME) != 0) {
         fogVolumeMarch();
         return;
     }
 
     bool custom = uShaderGraphEnabled != 0 && !uIsTextAlphaMask && !uEndPortalSurface;
+#else
+    bool custom = false;
+#endif
     bool pbr = (uPbrEnabled || custom) && !uIsUnlit && !uIsTextAlphaMask && !uEndPortalSurface;
     // Derivatives must be evaluated before the alpha discard, including for cutouts.
     vec3 vertexNormal = pbr ? safeDirection(vNormal, vec3(0.0, 1.0, 0.0)) : normalize(vNormal);
@@ -811,9 +823,13 @@ void main() {
     float alpha     = 1.0;
     float textFillWeight = 1.0;
 
+#ifndef NX_VELDRID_NO_SHADER_GRAPH
     if (custom) {
         if (uUseTexture) alpha = texture(uTexture, vTexCoord).a;
     } else if (uUseTexture) {
+#else
+    if (uUseTexture) {
+#endif
         vec4 texSample = pbr ? textureGrad(uTexture, uv, uvDx, uvDy) : texture(uTexture, vTexCoord);
         emissionMask = texSample.rgb;
         baseColor = pbr ? toLinear(texSample.rgb) * toLinear(uAlbedo) : texSample.rgb * uAlbedo;
@@ -859,6 +875,7 @@ void main() {
     float occlusion = pbr ? mix(1.0, clamp(surface.r, 0.0, 1.0), clamp(uOcclusionStrength, 0.0, 1.0)) : 1.0;
     vec3 graphEmission = vec3(0.0);
     float graphTransmission = 0.0, graphIor = 1.45, graphRefractionDepth = 0.0;
+#ifndef NX_VELDRID_NO_SHADER_GRAPH
     if (custom) {
         vec3 facingNormal = gl_FrontFacing ? vertexNormal : -vertexNormal;
         vec3 incoming = safeDirection(uCameraPosition - vFragPos, facingNormal);
@@ -877,6 +894,7 @@ void main() {
         if (pbr && (uShaderGraphFlags & GRAPH_BUMP_LINKED) != 0)
             vertexNormal = graphBump(vertexNormal, vFragPos, material.height * material.bumpStrength);
     }
+#endif
 
     // Modelbench discards only completely transparent fragments. Even very low
     // non-zero alpha must survive so it can write depth for render-depth masks.
@@ -1046,6 +1064,7 @@ void main() {
         result += baseColor * pointIndirectSum * max(uIndirectWorldStrength, 0.0) * (pbr ? (1.0 - metallic) * occlusion * gDiffuseWeight : 1.0);
     }
     }
+#ifndef NX_VELDRID_NO_SHADER_GRAPH
     if (custom && graphTransmission > 0.0) {
         // Transmission replaces the diffuse lobe with the refracted, base-colour-tinted scene behind.
         vec3 n = gl_FrontFacing ? vertexNormal : -vertexNormal;
@@ -1072,11 +1091,16 @@ void main() {
             alpha *= 1.0 - transmitted;
         }
     }
+#endif
     if (uEndPortalSurface) bounceSource = toLinear(baseColor);
+#ifndef NX_VELDRID_NO_SHADER_GRAPH
     if (custom) {
         result += graphEmission;
         bounceSource += pbr ? graphEmission : pow(graphEmission, vec3(2.2));
     } else if (uEmissionEnabled) {
+#else
+    if (uEmissionEnabled) {
+#endif
         vec3 emission = (uEmissionColor * emissionMask) * max(uEmissionEnergy, 0.0);
         if (pbr) emission = toLinear(uEmissionColor) * toLinear(emissionMask) * max(uEmissionEnergy, 0.0);
         if (!uIsUnlit && !uEmissionIndirectOnly) result += emission;

@@ -38,6 +38,8 @@ public sealed class VeldridPostContext
     public VeldridFramebuffer Other { get; private set; }
     public uint Width => Scene.Width;
     public uint Height => Scene.Height;
+    public VeldridFramebuffer Scratch(int index, PixelFormat? colorFormat = null) =>
+        Processor.GetScratchTarget(index, Scene, colorFormat ?? Scene.ColorFormat);
 
     public void Swap() => (Current, Other) = (Other, Current);
 
@@ -46,6 +48,17 @@ public sealed class VeldridPostContext
     {
         pass.Draw(Commands, Other.Framebuffer, blend);
         Swap();
+    }
+
+    public void DrawTo(VeldridFullscreenPass pass, VeldridFramebuffer target,
+        VeldridFullscreenPass.BlendMode blend = VeldridFullscreenPass.BlendMode.Opaque) =>
+        pass.Draw(Commands, target.Framebuffer, blend);
+
+    public void Copy(VeldridFramebuffer source, VeldridFramebuffer target)
+    {
+        if (source.Width != target.Width || source.Height != target.Height || source.ColorFormat != target.ColorFormat)
+            throw new ArgumentException("Post-process copy targets must have matching dimensions and formats.", nameof(target));
+        Commands.CopyTexture(source.ColorTexture, target.ColorTexture);
     }
 
     /// <summary>Draws over the current image. The pass must not sample the current image.</summary>
@@ -62,6 +75,7 @@ public sealed class VeldridPostProcessor : IDisposable
 {
     private readonly Dictionary<string, VeldridFullscreenPass> _passes = new(StringComparer.Ordinal);
     private readonly Dictionary<(SamplerFilter, SamplerAddressMode, SamplerAddressMode), Sampler> _samplers = new();
+    private readonly List<VeldridFramebuffer> _scratchTargets = new();
     private VeldridFramebuffer? _spare;
     private DeviceBuffer? _backdropQuad;
     private bool _disposed;
@@ -110,6 +124,22 @@ public sealed class VeldridPostProcessor : IDisposable
     public GraphicsDevice Device { get; }
     public Sampler LinearClamp { get; }
     public Sampler PointClamp { get; }
+
+    internal VeldridFramebuffer GetScratchTarget(int index, VeldridFramebuffer scene, PixelFormat colorFormat)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (index < 0) throw new ArgumentOutOfRangeException(nameof(index));
+        while (_scratchTargets.Count <= index)
+            _scratchTargets.Add(new VeldridFramebuffer(Device, scene.Width, scene.Height, hasDepth: false, colorFormat: colorFormat));
+        var target = _scratchTargets[index];
+        if (target.Width != scene.Width || target.Height != scene.Height || target.ColorFormat != colorFormat)
+        {
+            target.Dispose();
+            target = new VeldridFramebuffer(Device, scene.Width, scene.Height, hasDepth: false, colorFormat: colorFormat);
+            _scratchTargets[index] = target;
+        }
+        return target;
+    }
 
     public VeldridPostProcessor(GraphicsDevice device)
     {
@@ -176,6 +206,8 @@ public sealed class VeldridPostProcessor : IDisposable
         _passes.Clear();
         _spare?.Dispose();
         _spare = null;
+        foreach (var target in _scratchTargets) target.Dispose();
+        _scratchTargets.Clear();
         _backdropQuad?.Dispose();
         _backdropQuad = null;
         foreach (var sampler in _samplers.Values) sampler.Dispose();

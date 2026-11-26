@@ -9,6 +9,7 @@ using MineImatorSimplyRemade.core.graphics;
 using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.material.materials;
 using MineImatorSimplyRemade.core.mdl.meshes;
+using MineImatorSimplyRemade.core.mdl.mineImator;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemade.core.window.windows;
 using MineImatorSimplyRemade.gizmo;
@@ -3592,8 +3593,7 @@ public partial class Viewport : UiPanel
     {
         if (SceneObjects.Any(UsesShaderGraph)) return "Custom shader materials";
         if (_viewportRenderMode == ViewportRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined &&
-            camera?.Effects.FirstOrDefault(effect => effect.Enabled && effect.Type is CameraEffectType.Outline or
-                CameraEffectType.DepthOfField or CameraEffectType.Bloom or CameraEffectType.LensDirt) is { } unsupported)
+            camera?.Effects.FirstOrDefault(effect => effect.Enabled && effect.Type == CameraEffectType.Outline) is { } unsupported)
             return $"{unsupported.Type} camera effect";
         return null;
     }
@@ -3702,17 +3702,46 @@ public partial class Viewport : UiPanel
 
     /// <summary>
     /// Camera effects that run natively on Veldrid, in the order the OpenGL path applies them.
-    /// <paramref name="openGlTail"/> is true when the watermark (which needs an image texture) and the
-    /// cinematic bars after it must still run on OpenGL once the Veldrid image has been read back.
+    /// <paramref name="openGlTail"/> is true only when the configured watermark image could not be
+    /// imported; in that case the watermark and cinematic bars remain on OpenGL.
     /// </summary>
-    private List<IVeldridPostEffect> BuildVeldridEffects(CameraSceneObject? camera, bool renderedCombined, bool combined,
-        out bool openGlTail)
+    private List<IVeldridPostEffect> BuildVeldridEffects(CameraSceneObject? camera, Camera sceneCamera,
+        VeldridSceneRenderer renderer, uint width, uint height, bool renderedCombined, bool combined, out bool openGlTail)
     {
         var effects = new List<IVeldridPostEffect>();
         if (TransparentBackground)
             effects.Add(VeldridCameraEffects.AlphaResolve());
         if (renderedCombined)
         {
+            bool bloomActive = camera?.Effects.Any(effect => effect.Enabled && effect.Type == CameraEffectType.Bloom &&
+                effect.Bloom.Intensity != 0f) == true;
+            bool glowActive = PropertiesPanel is { GlowEnabled: true } &&
+                Math.Clamp(PropertiesPanel.GlowStrength, 0f, 2f) > 0f && Math.Clamp(PropertiesPanel.GlowSize, 0f, 20f) > 0f;
+            var dirtEffects = camera?.Effects.Where(effect => effect.Enabled && effect.Type == CameraEffectType.LensDirt &&
+                !string.IsNullOrEmpty(effect.LensDirt.TexturePath) && effect.LensDirt.Intensity > 0f &&
+                (effect.LensDirt.AffectedByBloom || effect.LensDirt.AffectedByGlow)).ToArray() ?? [];
+            bool captureGlow = glowActive && dirtEffects.Any(effect => effect.LensDirt.AffectedByGlow);
+            bool captureBloom = bloomActive && dirtEffects.Any(effect => effect.LensDirt.AffectedByBloom);
+            if (VeldridCameraEffects.Glow(PropertiesPanel, captureGlow) is { } glow)
+                effects.Add(glow);
+            effects.AddRange(VeldridCameraEffects.DepthOfField(camera, sceneCamera.Near, sceneCamera.Far));
+            effects.AddRange(VeldridCameraEffects.Bloom(camera, TransparentBackground, captureBloom));
+            float glowStrength = glowActive ? Math.Clamp(PropertiesPanel!.GlowStrength, 0f, 2f) : 0f;
+            foreach (var effect in dirtEffects)
+            {
+                var settings = effect.LensDirt;
+                uint dirtTexture = camera!.LoadTexture(settings.TexturePath);
+                if (dirtTexture == 0)
+                {
+                    Console.Error.WriteLine($"Could not load lens dirt texture '{settings.TexturePath}'.");
+                    continue;
+                }
+                var dirt = renderer.ImportPersistentTexture($"lens-dirt:{dirtTexture}", dirtTexture, 0);
+                bool useBloom = settings.AffectedByBloom && bloomActive;
+                bool useGlow = settings.AffectedByGlow && glowActive;
+                effects.Add(VeldridCameraEffects.LensDirt(settings, dirt, glowStrength, TransparentBackground,
+                    useBloom, useGlow));
+            }
             var colorManagement = ResolveColorManagementSettings(PropertiesPanel, camera);
             if (VeldridCameraEffects.ColorManagement(colorManagement.Enabled, colorManagement.ToneMapper,
                     colorManagement.Exposure, colorManagement.Gamma, colorManagement.Look) is { } toneMap)
@@ -3731,7 +3760,26 @@ public partial class Viewport : UiPanel
         }
         else if (combined)
             effects.AddRange(VeldridCameraEffects.CameraMaterial(camera));
-        openGlTail = renderedCombined && IsWatermarkActive(PropertiesPanel);
+        openGlTail = false;
+        if (renderedCombined && IsWatermarkActive(PropertiesPanel))
+        {
+            string path = ProjectManager.Instance.ResolveAssetPath(PropertiesPanel!.WatermarkImagePath);
+            uint texture = MineImatorLoader.Instance.LoadTextureFromFile(path, flipVertically: true);
+            if (texture != 0)
+            {
+                var image = renderer.ImportPersistentTexture("watermark", texture, 0);
+                float scale = Math.Clamp(PropertiesPanel.WatermarkScale, 0.01f, 20f);
+                float padding = Math.Clamp(PropertiesPanel.WatermarkPadding, 0f, 100000f);
+                effects.Add(VeldridCameraEffects.Watermark(image, width, height, scale, padding,
+                    PropertiesPanel.WatermarkHorizontalAlignment, PropertiesPanel.WatermarkVerticalAlignment,
+                    PropertiesPanel.WatermarkOpacity));
+            }
+            else
+            {
+                Console.Error.WriteLine($"Could not load watermark image '{path}'.");
+                openGlTail = true;
+            }
+        }
         if (!openGlTail)
             effects.AddRange(VeldridCameraEffects.CinematicBars(camera));
         return effects;
@@ -3814,12 +3862,12 @@ public partial class Viewport : UiPanel
                 renderer.Draw(mesh, model, true);
             }
         bool combinedPass = _renderedPassMode == RenderedPassMode.Combined;
-        var nativeEffects = BuildVeldridEffects(activeCamObj, renderMode == SceneRenderMode.Rendered && combinedPass,
-            combinedPass, out bool openGlTail);
+        var nativeEffects = BuildVeldridEffects(activeCamObj, camera, renderer, width, height,
+            renderMode == SceneRenderMode.Rendered && combinedPass, combinedPass, out bool openGlTail);
         renderer.EndFrame(_colorTex, VeldridContext.PostProcessor, nativeEffects);
         if (openGlTail)
         {
-            // The watermark needs an image texture; it and the bars drawn over it stay on OpenGL for now.
+            // The watermark could not be imported by Veldrid; keep it and the bars on OpenGL.
             ApplyWatermarkPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
             ApplyCinematicBarsPass(_fbo, width, height, activeCamObj);
         }

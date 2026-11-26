@@ -23,18 +23,24 @@ internal static partial class Program
         ("sky.vert", "sky.frag"), ("background.vert", "background.frag")
     ];
 
-    /// <summary>CPU only: every fullscreen and backdrop shader converts and compiles to SPIR-V for Veldrid.</summary>
+    private static readonly (string Vertex, string Fragment)[] VeldridSceneShaders =
+    [
+        ("simple.vert", "simple.frag"),
+        ("shadow_depth.vert", "shadow_depth.frag"), ("point_shadow_depth.vert", "point_shadow_depth.frag")
+    ];
+
+    /// <summary>CPU only: every registered fullscreen, backdrop, scene and shadow shader converts and compiles to SPIR-V.</summary>
     private static void VeldridGlslAdapterCompile(Fixture fixture)
     {
         var pairs = VeldridFullscreenShaders.Select(name => (Vertex: "edge.vert", Fragment: name))
-            .Concat(VeldridBackdropShaders).ToArray();
+            .Concat(VeldridBackdropShaders).Concat(VeldridSceneShaders).ToArray();
         var failures = new List<string>();
         foreach (var (vertexName, name) in pairs)
         {
             try
             {
                 var program = VeldridGlslAdapter.Adapt(CoreShader.LoadShaderSource(vertexName),
-                    CoreShader.LoadShaderSource(name), flipClipY: true);
+                    CoreShader.LoadShaderSource(name), flipClipY: true, disableShaderGraphs: vertexName == "simple.vert");
                 try
                 {
                     SpirvCompilation.CompileGlslToSpirv(program.VertexSource, vertexName, ShaderStages.Vertex, new GlslCompileOptions(false));
@@ -70,6 +76,35 @@ internal static partial class Program
         Equal(1, layout.Samplers.Count, "sampler count");
         Equal(1, layout.Samplers[0].TextureBinding, "texture binding follows the uniform block");
         Equal(2, layout.Samplers[0].SamplerBinding, "sampler binding follows its texture");
+
+        var preprocessing = VeldridGlslAdapter.Adapt(
+            "#version 330 core\n#define KEEP_UNIFORM\n#ifdef KEEP_UNIFORM\nuniform float uIncluded;\n#else\nuniform float uExcluded;\n#endif\nuniform bool uFlag; uniform vec3 uColor;\nvoid main() { gl_Position = vec4(uIncluded + float(uFlag) + uColor.x); }\n",
+            "#version 330 core\nout vec4 FragColor;\nvoid main() { FragColor = vec4(1.0); }\n",
+            flipClipY: true, remapClipZ: true);
+        Check(preprocessing.Uniforms.Any(member => member.Name == "uIncluded"), "active preprocessor branch uniform was collected");
+        Check(preprocessing.Uniforms.All(member => member.Name != "uExcluded"), "inactive preprocessor branch uniform was omitted");
+        Check(preprocessing.Uniforms.Any(member => member.Name == "uFlag") && preprocessing.Uniforms.Any(member => member.Name == "uColor"),
+            "multiple loose uniforms on one source line were collected");
+        Check(preprocessing.VertexSource.Contains("gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;", StringComparison.Ordinal),
+            "zero-to-one clip depth remap was emitted");
+
+        var scene = VeldridGlslAdapter.Adapt(CoreShader.LoadShaderSource("simple.vert"),
+            CoreShader.LoadShaderSource("simple.frag"), flipClipY: true, remapClipZ: true, disableShaderGraphs: true);
+        Equal("SceneData", scene.UniformBlocks.Single().Name, "named scene data block");
+        Equal(192, scene.UniformBlocks.Single().Size, "std140 scene data block size");
+        Equal(64, scene.UniformBlocks.Single().Members.Single(member => member.Name == "uAmbient").Offset,
+            "named block std140 member offset");
+        Equal(16, scene.Uniforms.Single(member => member.Name == "uPointLightPos").Stride,
+            "vec3 uniform arrays use 16-byte std140 strides");
+        Equal(32, scene.Uniforms.Single(member => member.Name == "uPointLightPos").ArrayLength,
+            "scene point-light uniform array length");
+        Equal(8, scene.Samplers.Single(sampler => sampler.Name == "uPointShadowMaps").ArrayLength, "point shadow texture array length");
+        Check(scene.Samplers.Single(sampler => sampler.Name == "uPointShadowMaps").SamplerBinding -
+            scene.Samplers.Single(sampler => sampler.Name == "uPointShadowMaps").TextureBinding == 8,
+            "sampler array shares one sampler binding after its texture bindings");
+        Check(scene.FragmentSource.Contains("uPointShadowMaps_tex_7", StringComparison.Ordinal) &&
+            !scene.FragmentSource.Contains("uPointShadowMaps[", StringComparison.Ordinal),
+            "literal sampler-array indices were expanded to distinct texture resources");
     }
 
     /// <summary>Runs Veldrid effects over an RGBA image in OpenGL row order and returns the result.</summary>
@@ -89,18 +124,27 @@ internal static partial class Program
                 : GraphicsDevice.CreateD3D11(options);
             Processor = new VeldridPostProcessor(Device);
             _commands = Device.ResourceFactory.CreateCommandList();
+            foreach (var (vertexName, fragmentName) in VeldridSceneShaders)
+            {
+                var program = VeldridGlslAdapter.Adapt(CoreShader.LoadShaderSource(vertexName),
+                    CoreShader.LoadShaderSource(fragmentName), VeldridFullscreenPass.FlipClipY(Device), remapClipZ: true,
+                    disableShaderGraphs: vertexName == "simple.vert");
+                foreach (var shader in VeldridFullscreenPass.CompileShaders(Device, program, fragmentName)) shader.Dispose();
+            }
         }
 
         public GraphicsDevice Device { get; }
         public VeldridPostProcessor Processor { get; }
 
-        public byte[] Run(byte[] input, uint width, uint height, IReadOnlyList<IVeldridPostEffect> effects)
+        public byte[] Run(byte[] input, uint width, uint height, IReadOnlyList<IVeldridPostEffect> effects, float depth = 1f)
         {
             using var scene = new VeldridFramebuffer(Device, width, height, depthFormat: PixelFormat.R32_Float);
             Device.UpdateTexture(scene.ColorTexture, input, 0, 0, 0, width, height, 1, 0, 0);
             using var staging = Device.ResourceFactory.CreateTexture(TextureDescription.Texture2D(
                 width, height, 1, 1, PixelFormat.R8_G8_B8_A8_UNorm, TextureUsage.Staging));
             _commands.Begin();
+            _commands.SetFramebuffer(scene.Framebuffer);
+            _commands.ClearDepthStencil(depth);
             var result = Processor.Run(_commands, scene, effects);
             _commands.CopyTexture(result.ColorTexture, staging);
             _commands.End();

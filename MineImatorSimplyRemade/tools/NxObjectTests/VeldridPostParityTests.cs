@@ -14,7 +14,8 @@ using PropertiesPanel = MineImatorSimplyRemade.core.ui.Panels.PropertiesPanel;
 internal static partial class Program
 {
     /// <summary>OpenGL framebuffers the viewport's effect passes read and write.</summary>
-    private readonly record struct GlPostTargets(uint Fbo, uint ColorTexture, uint GlowFbo, uint GlowTexture);
+    private readonly record struct GlPostTargets(uint Fbo, uint ColorTexture, uint GlowFbo, uint GlowTexture,
+        uint GlowPingFbo, uint GlowPingTexture);
 
     /// <summary>
     /// A hidden OpenGL window and a real <c>Viewport</c>, used as the reference renderer: it runs the
@@ -48,6 +49,7 @@ internal static partial class Program
             io.DeltaTime = 1f / 60f;
             _glfw.MakeContextCurrent(_window);
             Gl = GL.GetApi(_glfw.GetProcAddress);
+            MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader.Instance.Initialize(Gl);
             Panel = new PropertiesPanel
             {
                 TransparentBackground = false, ShadowsEnabled = false, FogEnabled = false,
@@ -82,7 +84,8 @@ internal static partial class Program
         /// <summary>Uploads <paramref name="input"/> as the scene image, runs a production pass and returns the result.</summary>
         public byte[] Run(byte[] input, Action<GlPostTargets> pass)
         {
-            var targets = new GlPostTargets(Field("_fbo"), Field("_colorTex"), Field("_glowFbo"), Field("_glowTex"));
+            var targets = new GlPostTargets(Field("_fbo"), Field("_colorTex"), Field("_glowFbo"), Field("_glowTex"),
+                Field("_glowPingFbo"), Field("_glowPingTex"));
             Gl.ActiveTexture(GLEnum.Texture0);
             Gl.BindTexture(GLEnum.Texture2D, targets.ColorTexture);
             fixed (byte* data = input)
@@ -92,6 +95,13 @@ internal static partial class Program
             Gl.Enable(GLEnum.Blend);
             pass(targets);
             return Read(targets.ColorTexture, Width, Height);
+        }
+
+        public void SetDepth(float depth)
+        {
+            Gl.BindFramebuffer(GLEnum.Framebuffer, Field("_fbo"));
+            Gl.ClearDepth(depth);
+            Gl.Clear(Silk.NET.OpenGL.ClearBufferMask.DepthBufferBit);
         }
 
         /// <summary>Clears the viewport framebuffer and draws the production sky and background image into it.</summary>
@@ -142,6 +152,7 @@ internal static partial class Program
         public void Dispose()
         {
             Viewport.DisposeFramebufferResources();
+            MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader.Instance.Initialize(null!);
             Gl.Dispose();
             ImGui.DestroyContext(_context);
             ImGui.SetCurrentContext(_previousContext);
@@ -219,6 +230,20 @@ internal static partial class Program
         renderer.Draw(quad, mat4.Identity, true);
         renderer.EndFrame(preview.ColorTexture);
         byte[] veldrid = oracle.Read(preview.ColorTexture, 64, 64);
+        var geometryCache = (System.Collections.IDictionary)typeof(VeldridSceneRenderer)
+            .GetField("_staticGeometry", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(renderer)!;
+        VeldridMesh CachedQuad() => ((ValueTuple<int, VeldridMesh>)geometryCache[quad]!).Item2;
+        var firstGpuGeometry = CachedQuad();
+        renderer.BeginFrame(64, 64, camera.GetViewMatrix(), camera.GetProjectionMatrix(1), new System.Numerics.Vector4(0, 0, 0, 1));
+        renderer.Draw(quad, mat4.Identity, true);
+        renderer.EndFrame(preview.ColorTexture);
+        Check(ReferenceEquals(firstGpuGeometry, CachedQuad()), "Static geometry reuses its Veldrid buffers between frames");
+        quad.Vertices[0] += new vec3(0, 0, 0.01f);
+        quad.Upload();
+        renderer.BeginFrame(64, 64, camera.GetViewMatrix(), camera.GetProjectionMatrix(1), new System.Numerics.Vector4(0, 0, 0, 1));
+        renderer.Draw(quad, mat4.Identity, true);
+        renderer.EndFrame(preview.ColorTexture);
+        Check(!ReferenceEquals(firstGpuGeometry, CachedQuad()), "GeometryVersion changes replace cached Veldrid buffers");
 
         static bool Red(byte[] pixels, int index) => pixels[index] > 200 && pixels[index + 1] < 60 && pixels[index + 2] < 60;
         int glRed = 0, veldridRed = 0, both = 0;
@@ -429,11 +454,12 @@ internal static partial class Program
             });
             Check(!expected.SequenceEqual(input), $"Chain ({label}): the OpenGL passes change the image");
 
-            object?[] arguments = [camera, true, true, false];
+            object?[] arguments = [camera, new Camera(), null!, width, height, true, true, false];
             var effects = (List<IVeldridPostEffect>)oracle.Call("BuildVeldridEffects", arguments)!;
-            Check(!(bool)arguments[3]!, $"Chain ({label}): no OpenGL tail without a watermark");
+            Check(!(bool)arguments[7]!, $"Chain ({label}): no OpenGL tail without a watermark");
             // Colour management, colour correction, camera material, vignette, chromatic aberration, distort, heat
-            // distort, FXAA, film grain, pixelate and cinematic bars, plus the alpha resolve on a transparent background.
+            // distort, FXAA, film grain, pixelate, Glow, Depth of Field, Bloom, Lens Dirt, Watermark and cinematic
+            // bars, plus the alpha resolve on a transparent background.
             Check(effects.Count == (transparent ? 12 : 11),
                 $"Chain ({label}): every effect is assembled (got {effects.Count} Veldrid effects)");
             byte[] actual = harness.Run(input, width, height, effects);
@@ -579,9 +605,161 @@ internal static partial class Program
             () => [VeldridCameraEffects.AlphaResolve()]);
         oracle.Panel.TransparentBackground = false;
 
+        const float depth = 0.7f, near = 0.1f, far = 100f;
+        var dof = CameraWithEffect(CameraEffectType.DepthOfField, e =>
+        {
+            e.DepthOfField.Depth = 0.1f; e.DepthOfField.FocusRange = 0.02f; e.DepthOfField.FadeSize = 0.2f;
+            e.DepthOfField.BlurSize = 88f; e.DepthOfField.AnamorphicRatio = 1.7f;
+            e.DepthOfField.EdgeHighlight = 0.7f; e.DepthOfField.HighlightThreshold = 0.25f;
+            e.DepthOfField.HighlightStrength = 1.8f; e.DepthOfField.ColorFringe = true;
+            e.DepthOfField.RedAngle = 8f; e.DepthOfField.GreenAngle = 137f; e.DepthOfField.BlueAngle = 248f;
+            e.DepthOfField.RedOffset = 5f; e.DepthOfField.GreenOffset = -3f; e.DepthOfField.BlueOffset = 7f;
+        });
+        dof.BladeCount = 7;
+        dof.BladeAngle = 31f;
+        dof.BladeStretch = -18f;
+        byte[] depthOfField = input;
+        byte[] expectedDepthOfField = oracle.Run(depthOfField, t =>
+        {
+            oracle.SetDepth(depth);
+            oracle.Call("ApplyDepthOfFieldPass", t.Fbo, t.ColorTexture, oracle.Viewport.GetType()
+                .GetField("_depthTex", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(oracle.Viewport),
+                t.GlowFbo, t.GlowTexture, width, height, near, far, dof);
+        });
+        Check(!expectedDepthOfField.SequenceEqual(depthOfField), "Depth of Field OpenGL pass changes the depth-dependent image");
+        var actualDepthOfField = harness.Run(depthOfField, width, height,
+            VeldridCameraEffects.DepthOfField(dof, near, far), depth);
+        var (dofMax, dofMean, dofDifferent, dofOutliers) = ComparePixels(expectedDepthOfField, actualDepthOfField, 2);
+        Check(dofOutliers == 0,
+            $"Depth of Field: {dofOutliers} pixels differ from OpenGL by more than 2 levels (max {dofMax}, mean {dofMean:F3})");
+        Console.WriteLine($"  Depth of Field: max {dofMax}, mean {dofMean:F3}, {dofDifferent} differing pixels, {dofOutliers} outliers");
+        oracle.SetDepth(1f);
+
         var pixelate = CameraWithEffect(CameraEffectType.Pixelate, e => e.Pixelate.Size = 7f);
         Case("Pixelate", 0,
             () => oracle.Run(input, t => oracle.Call("ApplyPixelatePass", t.Fbo, t.GlowFbo, t.GlowTexture, width, height, pixelate)),
             () => VeldridCameraEffects.Pixelate(pixelate));
+
+        oracle.Panel.GlowEnabled = true;
+        oracle.Panel.GlowStrength = 0.8f;
+        oracle.Panel.GlowSize = 8f;
+        var renderedPassMode = Enum.Parse(oracle.Viewport.GetType().GetNestedType("RenderedPassMode",
+            BindingFlags.NonPublic)!, "Combined");
+        byte[] expectedGlow = oracle.Run(input, t => oracle.Call("ApplyGlowPassGeneric", t.Fbo, t.ColorTexture,
+            t.GlowFbo, t.GlowTexture, t.GlowPingFbo, t.GlowPingTexture, width, height, oracle.Panel, renderedPassMode, true));
+        Check(!expectedGlow.SequenceEqual(input), "Glow OpenGL pass changes the bright regions");
+        var glowOnly = VeldridCameraEffects.Glow(oracle.Panel, capture: false);
+        Case("Glow", 2, () => expectedGlow, () => glowOnly == null ? [] : [glowOnly]);
+
+        var bloom = CameraWithEffect(CameraEffectType.Bloom, e =>
+        {
+            e.Bloom.Radius = 72f; e.Bloom.Intensity = 85f; e.Bloom.Threshold = 22f;
+            e.Bloom.AnamorphicRatio = 145f; e.Bloom.BlendMode = BloomBlendMode.Screen;
+            e.Bloom.BlendColorR = 0.9f; e.Bloom.BlendColorG = 0.7f; e.Bloom.BlendColorB = 1f;
+        });
+        foreach (bool transparent in new[] { false, true })
+        {
+            oracle.Panel.TransparentBackground = transparent;
+            Case($"Bloom (transparent {transparent})", 2,
+                () => oracle.Run(input, t => oracle.Call("ApplyBloomPass", t.Fbo, t.ColorTexture,
+                    t.GlowFbo, t.GlowTexture, t.GlowPingFbo, t.GlowPingTexture, width, height, bloom)),
+                () => VeldridCameraEffects.Bloom(bloom, transparent));
+        }
+        oracle.Panel.TransparentBackground = false;
+
+        uint dirtWidth = 13, dirtHeight = 9;
+        var dirtPixels = new byte[dirtWidth * dirtHeight * 4];
+        for (int y = 0; y < dirtHeight; y++)
+        for (int x = 0; x < dirtWidth; x++)
+        {
+            int offset = (y * (int)dirtWidth + x) * 4;
+            dirtPixels[offset] = 128;
+            dirtPixels[offset + 1] = 170;
+            dirtPixels[offset + 2] = 220;
+            dirtPixels[offset + 3] = (byte)((x + y) % 4 == 0 ? 160 : 255);
+        }
+        string dirtPath = Path.Combine(AppContext.BaseDirectory, "veldrid-lens-dirt-parity.png");
+        PanelViewport.WritePng(dirtPath, dirtPixels, (int)dirtWidth, (int)dirtHeight, bottomUp: true, rgba: true);
+        var dirtCamera = CameraWithEffect(CameraEffectType.LensDirt, effect =>
+        {
+            effect.LensDirt.TexturePath = dirtPath;
+            effect.LensDirt.Intensity = 68f;
+            effect.LensDirt.Power = 145f;
+            effect.LensDirt.Radius = 48f;
+            effect.LensDirt.AffectedByBloom = true;
+            effect.LensDirt.AffectedByGlow = true;
+        });
+        try
+        {
+            MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader.Instance.Initialize(oracle.Gl);
+            oracle.Call("PrepareLensDirt", dirtCamera, width, height);
+            byte[] expectedDirt = oracle.Run(input, t =>
+            {
+                oracle.Call("PrepareLensDirt", dirtCamera, width, height);
+                oracle.Call("ApplyGlowPassGeneric", t.Fbo, t.ColorTexture, t.GlowFbo, t.GlowTexture,
+                    t.GlowPingFbo, t.GlowPingTexture, width, height, oracle.Panel, renderedPassMode, true);
+                oracle.Call("ApplyBloomPass", t.Fbo, t.ColorTexture, t.GlowFbo, t.GlowTexture,
+                    t.GlowPingFbo, t.GlowPingTexture, width, height, bloom);
+                oracle.Call("ApplyLensDirtPass", t.Fbo, t.ColorTexture, t.GlowFbo, t.GlowTexture,
+                    t.GlowPingFbo, t.GlowPingTexture, width, height, dirtCamera);
+            });
+            Check(!expectedDirt.SequenceEqual(input), "Lens Dirt OpenGL chain changes the captured highlights");
+            using var dirt = VeldridTexture.CreateFromRgbaBytes(harness.Device, dirtPixels, dirtWidth, dirtHeight);
+            var glowForDirt = VeldridCameraEffects.Glow(oracle.Panel, capture: true);
+            var lensDirtEffects = new List<IVeldridPostEffect>();
+            if (glowForDirt != null) lensDirtEffects.Add(glowForDirt);
+            lensDirtEffects.AddRange(VeldridCameraEffects.Bloom(bloom, transparent: false, captureLensDirt: true));
+            lensDirtEffects.Add(VeldridCameraEffects.LensDirt(dirtCamera.Effects[0].LensDirt, dirt,
+                oracle.Panel.GlowStrength, transparent: false, useBloom: true, useGlow: true));
+            var actualDirt = harness.Run(input, width, height, lensDirtEffects);
+            var (dirtMax, dirtMean, dirtDifferent, dirtOutliers) = ComparePixels(expectedDirt, actualDirt, 2);
+            Check(dirtOutliers == 0,
+                $"Lens Dirt: {dirtOutliers} pixels differ from OpenGL by more than 2 levels (max {dirtMax}, mean {dirtMean:F3})");
+            Console.WriteLine($"  Lens Dirt: max {dirtMax}, mean {dirtMean:F3}, {dirtDifferent} differing pixels, {dirtOutliers} outliers");
+        }
+        finally
+        {
+            File.Delete(dirtPath);
+            oracle.Panel.GlowEnabled = false;
+            oracle.Panel.GlowStrength = 0f;
+        }
+
+        uint markWidth = 13, markHeight = 9;
+        var markPixels = new byte[markWidth * markHeight * 4];
+        for (int y = 0; y < markHeight; y++)
+        for (int x = 0; x < markWidth; x++)
+        {
+            int offset = (y * (int)markWidth + x) * 4;
+            markPixels[offset] = (byte)(x * 19);
+            markPixels[offset + 1] = (byte)(y * 27);
+            markPixels[offset + 2] = (byte)((x + y) * 13);
+            markPixels[offset + 3] = (byte)((x + y) % 4 == 0 ? 160 : 255);
+        }
+        string watermarkPath = Path.Combine(AppContext.BaseDirectory, "veldrid-watermark-parity.png");
+        PanelViewport.WritePng(watermarkPath, markPixels, (int)markWidth, (int)markHeight, bottomUp: true, rgba: true);
+        oracle.Panel.WatermarkEnabled = true;
+        oracle.Panel.WatermarkImagePath = watermarkPath;
+        oracle.Panel.WatermarkScale = 0.8f;
+        oracle.Panel.WatermarkPadding = 7f;
+        oracle.Panel.WatermarkHorizontalAlignment = 0;
+        oracle.Panel.WatermarkVerticalAlignment = 2;
+        oracle.Panel.WatermarkOpacity = 0.65f;
+        try
+        {
+            MineImatorSimplyRemade.core.mdl.mineImator.MineImatorLoader.Instance.Initialize(oracle.Gl);
+            Check(File.Exists(watermarkPath), "Watermark parity image exists before the OpenGL loader reads it");
+            using var watermark = VeldridTexture.CreateFromRgbaBytes(harness.Device, markPixels, markWidth, markHeight);
+            Case("Watermark", 1,
+                () => oracle.Run(input, t => oracle.Call("ApplyWatermarkPass", t.Fbo, t.GlowFbo, t.GlowTexture, width, height, oracle.Panel)),
+                () => [VeldridCameraEffects.Watermark(watermark, width, height, oracle.Panel.WatermarkScale,
+                    oracle.Panel.WatermarkPadding, oracle.Panel.WatermarkHorizontalAlignment,
+                    oracle.Panel.WatermarkVerticalAlignment, oracle.Panel.WatermarkOpacity)]);
+        }
+        finally
+        {
+            oracle.Panel.WatermarkEnabled = false;
+            oracle.Panel.WatermarkImagePath = "";
+            File.Delete(watermarkPath);
+        }
     }
 }

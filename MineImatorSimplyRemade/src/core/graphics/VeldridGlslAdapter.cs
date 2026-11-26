@@ -50,14 +50,26 @@ internal static class VeldridGlslAdapter
         public int Components => IsMatrix ? MatrixColumns(GlslType) * 4 : TypeInfo(GlslType).Components;
     }
 
-    /// <summary>One sampler uniform, split into a texture binding and the following sampler binding.</summary>
+    /// <summary>One sampler uniform, with arrays represented as separate texture bindings sharing one sampler.</summary>
     public sealed class SamplerMember
     {
         public required string Name { get; init; }
         public required string GlslType { get; init; }
         public required int TextureBinding { get; init; }
-        public int SamplerBinding => TextureBinding + 1;
+        public required int ArrayLength { get; init; }
+        public int SamplerBinding => TextureBinding + ArrayLength;
+        internal int TextureSlot { get; set; }
+        internal int SamplerSlot { get; set; }
         public required bool Comparison { get; init; }
+        public required ShaderStages Stages { get; init; }
+    }
+
+    public sealed class UniformBlock
+    {
+        public required string Name { get; init; }
+        public required int Binding { get; init; }
+        public required int Size { get; init; }
+        public required IReadOnlyList<UniformMember> Members { get; init; }
         public required ShaderStages Stages { get; init; }
     }
 
@@ -66,6 +78,7 @@ internal static class VeldridGlslAdapter
         public required string VertexSource { get; init; }
         public required string FragmentSource { get; init; }
         public required IReadOnlyList<UniformMember> Uniforms { get; init; }
+        public required IReadOnlyList<UniformBlock> UniformBlocks { get; init; }
         public required IReadOnlyList<SamplerMember> Samplers { get; init; }
         /// <summary>Byte size of the std140 block, rounded up to 16. Zero when no loose uniform exists.</summary>
         public required int UniformSize { get; init; }
@@ -77,9 +90,12 @@ internal static class VeldridGlslAdapter
             var elements = new List<ResourceLayoutElementDescription>();
             if (HasUniforms)
                 elements.Add(new ResourceLayoutElementDescription(UniformBlockName, ResourceKind.UniformBuffer, UniformStages));
+            foreach (var block in UniformBlocks)
+                elements.Add(new ResourceLayoutElementDescription(block.Name, ResourceKind.UniformBuffer, block.Stages));
             foreach (var sampler in Samplers)
             {
-                elements.Add(new ResourceLayoutElementDescription(sampler.Name + "_tex", ResourceKind.TextureReadOnly, sampler.Stages));
+                for (int i = 0; i < sampler.ArrayLength; i++)
+                    elements.Add(new ResourceLayoutElementDescription(TextureResourceName(sampler, i), ResourceKind.TextureReadOnly, sampler.Stages));
                 elements.Add(new ResourceLayoutElementDescription(sampler.Name + "_smp", ResourceKind.Sampler, sampler.Stages));
             }
             return new ResourceLayoutDescription(elements.ToArray());
@@ -87,6 +103,7 @@ internal static class VeldridGlslAdapter
     }
 
     private sealed record Declaration(string Type, string Name, int ArrayLength, double[]? Default = null);
+    private sealed record BlockInfo(string Name, IReadOnlyList<UniformMember> Members, int Size);
 
     /// <summary>Identifiers that are legal in GLSL 3.3 but reserved from GLSL 4.0 on.</summary>
     private static readonly string[] ReservedSinceGlsl400 =
@@ -97,12 +114,14 @@ internal static class VeldridGlslAdapter
         public string Source = "";
         public readonly List<Declaration> Uniforms = new();
         public readonly List<Declaration> Samplers = new();
+        public readonly List<BlockInfo> UniformBlocks = new();
     }
 
     private static readonly Regex UniformBlockRegex = new(
-        @"^[ \t]*(?:layout\s*\([^)]*\)\s*)?uniform\s+[A-Za-z_]\w*\s*\{", RegexOptions.Multiline | RegexOptions.Compiled);
+        @"(?<layout>layout\s*\((?<qualifiers>[^)]*)\)\s*)?uniform\s+(?<name>[A-Za-z_]\w*)\s*\{(?<body>[\s\S]*?)\}\s*;",
+        RegexOptions.Compiled);
     private static readonly Regex UniformRegex = new(
-        @"^[ \t]*(?:layout\s*\([^)]*\)\s*)?uniform\s+(?:(?:lowp|mediump|highp)\s+)?(?<type>[A-Za-z_]\w*)\s+(?<names>[^;{}]+);[ \t]*$",
+        @"(?:^|(?<=;))\s*(?:layout\s*\([^)]*\)\s*)?uniform\s+(?:(?:lowp|mediump|highp)\s+)?(?<type>[A-Za-z_]\w*)\s+(?<names>[^;{}]+);",
         RegexOptions.Multiline | RegexOptions.Compiled);
     private static readonly Regex InterfaceRegex = new(
         @"^(?<indent>[ \t]*)(?:layout\s*\((?<layout>[^)]*)\)\s*)?(?<interp>(?:(?:flat|smooth|noperspective|centroid|sample|invariant)\s+)*)(?<dir>in|out)\s+(?<type>(?:(?:lowp|mediump|highp)\s+)?[A-Za-z_]\w*)\s+(?<names>[^;{}()]+);[ \t]*$",
@@ -123,10 +142,12 @@ internal static class VeldridGlslAdapter
     /// <param name="vertexSource">GL 3.3 vertex shader, with includes already expanded.</param>
     /// <param name="fragmentSource">GL 3.3 fragment shader, with includes already expanded.</param>
     /// <param name="flipClipY">Negate clip-space Y so targets are stored bottom row first, like OpenGL.</param>
-    public static Program Adapt(string vertexSource, string fragmentSource, bool flipClipY)
+    public static Program Adapt(string vertexSource, string fragmentSource, bool flipClipY, bool remapClipZ = false,
+        bool disableShaderGraphs = false)
     {
-        var vertex = new StageInfo { Source = Prepare(vertexSource) };
-        var fragment = new StageInfo { Source = Prepare(fragmentSource) };
+        string[]? extraDefines = disableShaderGraphs ? ["NX_VELDRID_NO_SHADER_GRAPH"] : null;
+        var vertex = new StageInfo { Source = Prepare(vertexSource, extraDefines) };
+        var fragment = new StageInfo { Source = Prepare(fragmentSource, extraDefines) };
         Collect(vertex);
         Collect(fragment);
 
@@ -165,8 +186,34 @@ internal static class VeldridGlslAdapter
         }
         int blockSize = members.Count == 0 ? 0 : RoundUp(cursor, 16);
 
+        var uniformBlocks = new List<UniformBlock>();
+        int nextResourceBinding = members.Count > 0 ? 1 : 0;
+        foreach (var (info, stage) in new[] { (vertex, ShaderStages.Vertex), (fragment, ShaderStages.Fragment) })
+            foreach (var declaration in info.UniformBlocks)
+            {
+                int index = uniformBlocks.FindIndex(block => block.Name == declaration.Name);
+                if (index >= 0)
+                {
+                    var existing = uniformBlocks[index];
+                    if (!BlockMembersEqual(existing.Members, declaration.Members) || existing.Size != declaration.Size)
+                        throw new NotSupportedException($"Uniform block '{declaration.Name}' differs between the vertex and fragment shaders.");
+                    uniformBlocks[index] = new UniformBlock
+                    {
+                        Name = existing.Name, Binding = existing.Binding, Size = existing.Size, Members = existing.Members,
+                        Stages = existing.Stages | stage
+                    };
+                    continue;
+                }
+                uniformBlocks.Add(new UniformBlock
+                {
+                    Name = declaration.Name, Binding = nextResourceBinding++, Size = declaration.Size,
+                    Members = declaration.Members, Stages = stage
+                });
+            }
+
         var samplers = new List<SamplerMember>();
-        int nextBinding = members.Count > 0 ? 1 : 0;
+        int nextBinding = nextResourceBinding;
+        int nextTextureSlot = 0, nextSamplerSlot = 0;
         foreach (var (info, stage) in new[] { (vertex, ShaderStages.Vertex), (fragment, ShaderStages.Fragment) })
             foreach (var declaration in info.Samplers)
             {
@@ -174,11 +221,12 @@ internal static class VeldridGlslAdapter
                 if (index >= 0)
                 {
                     var existing = samplers[index];
-                    if (existing.GlslType != declaration.Type)
+                    if (existing.GlslType != declaration.Type || existing.ArrayLength != declaration.ArrayLength)
                         throw new NotSupportedException($"Sampler '{declaration.Name}' is declared with different types.");
                     samplers[index] = new SamplerMember
                     {
                         Name = existing.Name, GlslType = existing.GlslType, TextureBinding = existing.TextureBinding,
+                        ArrayLength = existing.ArrayLength, TextureSlot = existing.TextureSlot, SamplerSlot = existing.SamplerSlot,
                         Comparison = existing.Comparison, Stages = existing.Stages | stage
                     };
                     continue;
@@ -186,20 +234,23 @@ internal static class VeldridGlslAdapter
                 samplers.Add(new SamplerMember
                 {
                     Name = declaration.Name, GlslType = declaration.Type, TextureBinding = nextBinding,
+                    ArrayLength = declaration.ArrayLength, TextureSlot = nextTextureSlot, SamplerSlot = nextSamplerSlot,
                     Comparison = declaration.Type.EndsWith("Shadow", StringComparison.Ordinal), Stages = stage
                 });
-                nextBinding += 2;
+                nextBinding += declaration.ArrayLength + 1;
+                nextTextureSlot += declaration.ArrayLength;
+                nextSamplerSlot++;
             }
 
         ShaderStages uniformStages = ShaderStages.None;
         if (vertex.Uniforms.Count > 0) uniformStages |= ShaderStages.Vertex;
         if (fragment.Uniforms.Count > 0) uniformStages |= ShaderStages.Fragment;
 
-        string vertexOut = Rewrite(vertex, members, samplers, ShaderStages.Vertex, flipClipY, null, out var outputLocations);
-        string fragmentOut = Rewrite(fragment, members, samplers, ShaderStages.Fragment, false, outputLocations, out _);
+        string vertexOut = Rewrite(vertex, members, uniformBlocks, samplers, ShaderStages.Vertex, flipClipY, remapClipZ, null, out var outputLocations);
+        string fragmentOut = Rewrite(fragment, members, uniformBlocks, samplers, ShaderStages.Fragment, false, false, outputLocations, out _);
         return new Program
         {
-            VertexSource = vertexOut, FragmentSource = fragmentOut, Uniforms = members, Samplers = samplers,
+            VertexSource = vertexOut, FragmentSource = fragmentOut, Uniforms = members, UniformBlocks = uniformBlocks, Samplers = samplers,
             UniformSize = blockSize, UniformStages = uniformStages
         };
     }
@@ -208,16 +259,128 @@ internal static class VeldridGlslAdapter
     /// Strips comments (keeping line numbers), normalises line endings and renames identifiers that
     /// GLSL 4.5 reserves but the original GLSL 3.3 source legitimately uses (for example a function called <c>sample</c>).
     /// </summary>
-    private static string Prepare(string source)
+    private static string Prepare(string source, IEnumerable<string>? extraDefines)
     {
         source = source.Replace("\r\n", "\n").Replace('\r', '\n');
         source = Regex.Replace(source, @"/\*.*?\*/", match => new string('\n', match.Value.Count(c => c == '\n')), RegexOptions.Singleline);
         source = Regex.Replace(source, @"//[^\n]*", "");
+        source = ResolveConditionals(source, extraDefines);
         var version = Regex.Match(source, @"^[ \t]*#version[ \t]+(\d+)", RegexOptions.Multiline);
         if (!version.Success || int.Parse(version.Groups[1].Value, CultureInfo.InvariantCulture) < 400)
             foreach (string word in ReservedSinceGlsl400)
                 source = Regex.Replace(source, $@"\b{word}\b", "nx_" + word);
         return source;
+    }
+
+    private static string ResolveConditionals(string source, IEnumerable<string>? extraDefines)
+    {
+        var defines = new HashSet<string>(extraDefines ?? [], StringComparer.Ordinal);
+        var output = new StringBuilder(source.Length);
+        var conditions = new Stack<(bool ParentActive, bool BranchTaken, bool Active, bool ElseSeen)>();
+        bool active = true;
+        foreach (string line in source.Split('\n'))
+        {
+            var directive = Regex.Match(line, @"^[ \t]*#\s*(?<name>if|ifdef|ifndef|elif|else|endif|define|undef)\b(?<args>.*)$");
+            if (!directive.Success)
+            {
+                output.Append(active ? line : "").Append('\n');
+                continue;
+            }
+
+            string name = directive.Groups["name"].Value;
+            string args = directive.Groups["args"].Value.Trim();
+            switch (name)
+            {
+                case "ifdef":
+                case "ifndef":
+                case "if":
+                {
+                    bool condition = name switch
+                    {
+                        "ifdef" => defines.Contains(ReadMacroName(args)),
+                        "ifndef" => !defines.Contains(ReadMacroName(args)),
+                        _ => EvaluateCondition(args, defines)
+                    };
+                    bool branch = active && condition;
+                    conditions.Push((active, branch, branch, false));
+                    active = branch;
+                    output.Append('\n');
+                    break;
+                }
+                case "elif":
+                {
+                    if (conditions.Count == 0) throw new NotSupportedException("Preprocessor #elif has no matching #if.");
+                    var frame = conditions.Pop();
+                    if (frame.ElseSeen) throw new NotSupportedException("Preprocessor #elif cannot follow #else.");
+                    bool condition = frame.ParentActive && !frame.BranchTaken && EvaluateCondition(args, defines);
+                    frame = (frame.ParentActive, frame.BranchTaken || condition, condition, false);
+                    conditions.Push(frame);
+                    active = condition;
+                    output.Append('\n');
+                    break;
+                }
+                case "else":
+                {
+                    if (conditions.Count == 0) throw new NotSupportedException("Preprocessor #else has no matching #if.");
+                    var frame = conditions.Pop();
+                    if (frame.ElseSeen) throw new NotSupportedException("A preprocessor conditional has multiple #else branches.");
+                    bool branch = frame.ParentActive && !frame.BranchTaken;
+                    conditions.Push((frame.ParentActive, frame.BranchTaken || branch, branch, true));
+                    active = branch;
+                    output.Append('\n');
+                    break;
+                }
+                case "endif":
+                {
+                    if (conditions.Count == 0) throw new NotSupportedException("Preprocessor #endif has no matching #if.");
+                    var frame = conditions.Pop();
+                    active = frame.ParentActive;
+                    output.Append('\n');
+                    break;
+                }
+                case "define" when active:
+                {
+                    string macro = ReadMacroName(args);
+                    defines.Add(macro);
+                    output.Append(line).Append('\n');
+                    break;
+                }
+                case "undef" when active:
+                    defines.Remove(ReadMacroName(args));
+                    output.Append(line).Append('\n');
+                    break;
+                default:
+                    output.Append(active ? line : "").Append('\n');
+                    break;
+            }
+        }
+        if (conditions.Count != 0) throw new NotSupportedException("A preprocessor conditional has no matching #endif.");
+        return output.ToString();
+    }
+
+    private static string ReadMacroName(string text)
+    {
+        var match = Regex.Match(text, @"^(?<name>[A-Za-z_]\w*)");
+        if (!match.Success) throw new NotSupportedException($"Cannot parse preprocessor macro '{text}'.");
+        return match.Groups["name"].Value;
+    }
+
+    private static bool EvaluateCondition(string expression, HashSet<string> defines)
+    {
+        expression = Regex.Replace(expression, @"defined\s*(?:\(\s*(?<paren>[A-Za-z_]\w*)\s*\)|(?<bare>[A-Za-z_]\w*))",
+            match => defines.Contains(match.Groups["paren"].Success ? match.Groups["paren"].Value : match.Groups["bare"].Value) ? "1" : "0");
+        expression = expression.Trim();
+        if (expression.StartsWith("!", StringComparison.Ordinal)) return !EvaluateCondition(expression[1..], defines);
+        int or = expression.IndexOf("||", StringComparison.Ordinal);
+        if (or >= 0) return EvaluateCondition(expression[..or], defines) || EvaluateCondition(expression[(or + 2)..], defines);
+        int and = expression.IndexOf("&&", StringComparison.Ordinal);
+        if (and >= 0) return EvaluateCondition(expression[..and], defines) && EvaluateCondition(expression[(and + 2)..], defines);
+        if (expression.StartsWith('(') && expression.EndsWith(')')) return EvaluateCondition(expression[1..^1], defines);
+        if (expression is "1" or "true") return true;
+        if (expression is "0" or "false" or "") return false;
+        string macro = ReadMacroName(expression);
+        if (defines.Contains(macro)) return true;
+        throw new NotSupportedException($"Cannot evaluate preprocessor condition '{expression}'.");
     }
 
     /// <summary>Splits a declarator list on commas that are not nested inside parentheses or brackets.</summary>
@@ -277,8 +440,6 @@ internal static class VeldridGlslAdapter
 
     private static void Collect(StageInfo stage)
     {
-        if (UniformBlockRegex.IsMatch(stage.Source))
-            throw new NotSupportedException("Uniform blocks are not supported by the Veldrid GLSL adapter yet.");
         if (InterfaceBlockRegex.IsMatch(stage.Source))
             throw new NotSupportedException("Interface blocks are not supported by the Veldrid GLSL adapter.");
         var constants = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -288,7 +449,14 @@ internal static class VeldridGlslAdapter
             string value = match.Groups["v1"].Success ? match.Groups["v1"].Value : match.Groups["v2"].Value;
             constants[name] = int.Parse(value, CultureInfo.InvariantCulture);
         }
-        foreach (Match match in UniformRegex.Matches(stage.Source))
+        foreach (Match match in UniformBlockRegex.Matches(stage.Source))
+        {
+            if (!match.Groups["qualifiers"].Value.Split(',').Any(value => value.Trim() == "std140"))
+                throw new NotSupportedException($"Uniform block '{match.Groups["name"].Value}' must use std140 layout.");
+            stage.UniformBlocks.Add(ParseUniformBlock(match.Groups["name"].Value, match.Groups["body"].Value, constants));
+        }
+        string looseUniformSource = UniformBlockRegex.Replace(stage.Source, "");
+        foreach (Match match in UniformRegex.Matches(looseUniformSource))
         {
             string type = match.Groups["type"].Value;
             foreach (string rawDeclarator in SplitDeclarators(match.Groups["names"].Value))
@@ -316,10 +484,9 @@ internal static class VeldridGlslAdapter
                 var declaration = new Declaration(type, parsed.Groups["name"].Value, length);
                 if (IsSamplerType(type))
                 {
-                    if (length > 0) throw new NotSupportedException($"Sampler array '{declaration.Name}' is not supported.");
                     if (initializer != null) throw new NotSupportedException($"Sampler '{declaration.Name}' cannot have an initializer.");
                     SamplerTypes(type);
-                    stage.Samplers.Add(declaration);
+                    stage.Samplers.Add(declaration with { ArrayLength = Math.Max(1, length) });
                 }
                 else
                 {
@@ -336,8 +503,61 @@ internal static class VeldridGlslAdapter
         }
     }
 
-    private static string Rewrite(StageInfo stage, IReadOnlyList<UniformMember> members, IReadOnlyList<SamplerMember> samplers,
-        ShaderStages shaderStage, bool flipClipY, Dictionary<string, int>? inputLocations,
+    private static BlockInfo ParseUniformBlock(string name, string body, Dictionary<string, int> constants)
+    {
+        var members = new List<UniformMember>();
+        int cursor = 0;
+        foreach (string statement in body.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string trimmed = statement.Trim();
+            if (trimmed.Length == 0) continue;
+            var declaration = Regex.Match(trimmed, @"^(?<type>[A-Za-z_]\w*)\s+(?<names>.+)$");
+            if (!declaration.Success)
+                throw new NotSupportedException($"Cannot parse a member of uniform block '{name}': '{trimmed}'.");
+            string type = declaration.Groups["type"].Value;
+            var (size, alignment, _) = TypeInfo(type);
+            foreach (string rawDeclarator in SplitDeclarators(declaration.Groups["names"].Value))
+            {
+                var parsed = DeclaratorRegex.Match(rawDeclarator);
+                if (!parsed.Success)
+                    throw new NotSupportedException($"Cannot parse uniform block member '{rawDeclarator.Trim()}'.");
+                int length = 0;
+                if (parsed.Groups["len"].Success)
+                {
+                    string text = parsed.Groups["len"].Value;
+                    if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out length) &&
+                        !constants.TryGetValue(text, out length))
+                        throw new NotSupportedException($"Cannot resolve uniform block array size '{text}'.");
+                    if (length <= 0) throw new NotSupportedException("Uniform block arrays need a positive size.");
+                }
+                int stride = length > 0 ? RoundUp(size, 16) : size;
+                int memberAlignment = length > 0 ? 16 : alignment;
+                cursor = RoundUp(cursor, memberAlignment);
+                int memberSize = length > 0 ? stride * length : size;
+                members.Add(new UniformMember
+                {
+                    Name = parsed.Groups["name"].Value, GlslType = type, ArrayLength = length,
+                    Offset = cursor, Size = memberSize, Stride = stride
+                });
+                cursor += memberSize;
+            }
+        }
+        if (members.Count == 0) throw new NotSupportedException($"Uniform block '{name}' is empty.");
+        return new BlockInfo(name, members, RoundUp(cursor, 16));
+    }
+
+    private static bool BlockMembersEqual(IReadOnlyList<UniformMember> left, IReadOnlyList<UniformMember> right) =>
+        left.Count == right.Count && left.Zip(right).All(pair =>
+            pair.First.Name == pair.Second.Name && pair.First.GlslType == pair.Second.GlslType &&
+            pair.First.ArrayLength == pair.Second.ArrayLength && pair.First.Offset == pair.Second.Offset &&
+            pair.First.Size == pair.Second.Size && pair.First.Stride == pair.Second.Stride);
+
+    private static string TextureResourceName(SamplerMember sampler, int element) =>
+        sampler.ArrayLength == 1 ? sampler.Name + "_tex" : $"{sampler.Name}_tex_{element}";
+
+    private static string Rewrite(StageInfo stage, IReadOnlyList<UniformMember> members, IReadOnlyList<UniformBlock> uniformBlocks,
+        IReadOnlyList<SamplerMember> samplers,
+        ShaderStages shaderStage, bool flipClipY, bool remapClipZ, Dictionary<string, int>? inputLocations,
         out Dictionary<string, int> outputLocations)
     {
         string source = stage.Source;
@@ -350,13 +570,34 @@ internal static class VeldridGlslAdapter
         {
             var sampler = samplers.First(item => item.Name == declaration.Name);
             var (textureType, samplerType) = SamplerTypes(declaration.Type);
-            header.Append($"layout(set = 0, binding = {sampler.TextureBinding}) uniform {textureType} {declaration.Name}_tex;\n");
+            for (int i = 0; i < sampler.ArrayLength; i++)
+                header.Append($"layout(set = 0, binding = {sampler.TextureBinding + i}) uniform {textureType} {TextureResourceName(sampler, i)};\n");
             header.Append($"layout(set = 0, binding = {sampler.SamplerBinding}) uniform {samplerType} {declaration.Name}_smp;\n");
-            header.Append($"#define {declaration.Name} {declaration.Type}({declaration.Name}_tex, {declaration.Name}_smp)\n");
+            if (sampler.ArrayLength == 1)
+                header.Append($"#define {declaration.Name} {declaration.Type}({declaration.Name}_tex, {declaration.Name}_smp)\n");
         }
         foreach (var declaration in stage.Uniforms.Where(item => item.Type == "bool"))
             header.Append($"#define {declaration.Name} ({declaration.Name}{BoolStorageSuffix} != 0u)\n");
         source = UniformRegex.Replace(source, "");
+        source = UniformBlockRegex.Replace(source, match =>
+        {
+            var block = uniformBlocks.First(item => item.Name == match.Groups["name"].Value);
+            return $"layout(set = 0, binding = {block.Binding}, std140) uniform {block.Name} {{{match.Groups["body"].Value}}};";
+        });
+        foreach (var sampler in stage.Samplers.Where(item => item.ArrayLength > 1))
+        {
+            var member = samplers.First(item => item.Name == sampler.Name);
+            var indexedSampler = new Regex($@"\b{Regex.Escape(sampler.Name)}\s*\[\s*(?<index>\d+)\s*\]");
+            source = indexedSampler.Replace(source, match =>
+            {
+                int index = int.Parse(match.Groups["index"].Value, CultureInfo.InvariantCulture);
+                if (index >= sampler.ArrayLength)
+                    throw new NotSupportedException($"Sampler array '{sampler.Name}' is indexed out of range.");
+                return $"{sampler.Type}({TextureResourceName(member, index)}, {sampler.Name}_smp)";
+            });
+            if (Regex.IsMatch(source, $@"\b{Regex.Escape(sampler.Name)}\s*\["))
+                throw new NotSupportedException($"Sampler array '{sampler.Name}' requires literal indices.");
+        }
         source = RewriteSamplerFunctions(source);
 
         source = Regex.Replace(source, @"\bgl_VertexID\b", "gl_VertexIndex");
@@ -423,12 +664,13 @@ internal static class VeldridGlslAdapter
             return match.Groups["indent"].Value + string.Join(" ", declarations);
         });
 
-        if (flipClipY && shaderStage == ShaderStages.Vertex)
+        if ((flipClipY || remapClipZ) && shaderStage == ShaderStages.Vertex)
         {
             if (!MainRegex.IsMatch(source))
                 throw new NotSupportedException("The vertex shader has no main function to wrap.");
             source = MainRegex.Replace(source, "void nx_main()", 1);
-            source += "\nvoid main() { nx_main(); gl_Position.y = -gl_Position.y; }\n";
+            source += "\nvoid main() { nx_main();" + (flipClipY ? " gl_Position.y = -gl_Position.y;" : "") +
+                (remapClipZ ? " gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;" : "") + " }\n";
         }
 
         source = InsertHeader(source, header.ToString());

@@ -43,6 +43,8 @@ public sealed class VeldridSceneRenderer : IDisposable
     private readonly Dictionary<(bool Wire, bool Overlay, bool NoDepthWrite, FaceCullMode Cull, bool AlphaClip, MaterialBlendMode BlendMode, bool Translucent), Pipeline> _pipelines = new();
     private readonly Dictionary<uint, VeldridTexture> _textures = new();
     private readonly Dictionary<string, (uint GlTexture, int Revision, VeldridTexture Texture)> _persistentTextures = new();
+    private readonly Dictionary<Mesh, (int Version, VeldridMesh Mesh)> _staticGeometry = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<Mesh> _seenStaticGeometry = new(ReferenceEqualityComparer.Instance);
     private readonly List<IDisposable> _frameResources = new();
     private VeldridFramebuffer? _target;
     private Veldrid.Texture? _staging;
@@ -327,6 +329,7 @@ public sealed class VeldridSceneRenderer : IDisposable
         _cameraPosition = (view.Inverse * new vec4(0, 0, 0, 1)).xyz;
         _wireframe = wireframe;
         _hasDraws = false;
+        _seenStaticGeometry.Clear();
         if (Mesh.AnimatedTextureTimelineTimeSeconds == null && Mesh.AdvanceAnimatedTextures)
             _animationTime += Mesh.DeltaTime * Mesh.AnimatedTextureSpeedScale;
         _commands.Begin();
@@ -345,17 +348,25 @@ public sealed class VeldridSceneRenderer : IDisposable
         if (!_recording) throw new InvalidOperationException("BeginFrame must be called before Draw.");
         ArgumentNullException.ThrowIfNull(mesh);
         if (mesh.PickOnly || mesh.Vertices.Count == 0 || mesh.Alpha <= 0) return;
-        var vertices = BuildVertices(mesh);
-        var gpuMesh = new VeldridMesh();
-        _frameResources.Add(gpuMesh);
-        gpuMesh.UploadVertices(_device, vertices);
-        if (mesh.Indices is { Length: > 0 })
+        bool cacheGeometry = CanCacheGeometry(mesh);
+        VeldridMesh gpuMesh;
+        if (cacheGeometry)
         {
-            foreach (uint index in mesh.Indices)
-                if (index >= vertices.Length) throw new ArgumentException("Mesh index exceeds vertex count.", nameof(mesh));
-            gpuMesh.UploadIndices(_device, mesh.Indices);
+            _seenStaticGeometry.Add(mesh);
+            if (!_staticGeometry.TryGetValue(mesh, out var cached) || cached.Version != mesh.GeometryVersion)
+            {
+                cached.Mesh?.Dispose();
+                gpuMesh = CreateGpuMesh(mesh, BuildVertices(mesh));
+                _staticGeometry[mesh] = (mesh.GeometryVersion, gpuMesh);
+            }
+            else gpuMesh = cached.Mesh;
         }
-        bool hasUvs = mesh.TexCoords.Count == vertices.Length;
+        else
+        {
+            gpuMesh = CreateGpuMesh(mesh, BuildVertices(mesh));
+            _frameResources.Add(gpuMesh);
+        }
+        bool hasUvs = mesh.TexCoords.Count == mesh.Vertices.Count;
         var texture = hasUvs ? ImportTexture(mesh.TextureId) : _white;
         var mask = hasUvs ? ImportTexture(mesh.AlphaMaskTextureId) : _white;
         bool useNormalTexture = hasUvs && mesh.NormalEnabled && mesh.NormalTexture != 0;
@@ -487,6 +498,23 @@ public sealed class VeldridSceneRenderer : IDisposable
         _commands.SetGraphicsResourceSet(0, set);
         gpuMesh.Draw(_commands);
         _hasDraws = true;
+    }
+
+    private bool CanCacheGeometry(Mesh mesh) =>
+        mesh.Vertices.Count >= 3 && !mesh.HasClothGeometry && !mesh.IsSkinned && !mesh.WindActive &&
+        mesh.ShapeKeys.All(key => key.Weight == 0) && mesh.GpuBend is not { Angle.LengthSqr: > 0 };
+
+    private VeldridMesh CreateGpuMesh(Mesh mesh, VeldridVertex[] vertices)
+    {
+        var gpuMesh = new VeldridMesh();
+        gpuMesh.UploadVertices(_device, vertices);
+        if (mesh.Indices is { Length: > 0 })
+        {
+            foreach (uint index in mesh.Indices)
+                if (index >= vertices.Length) throw new ArgumentException("Mesh index exceeds vertex count.", nameof(mesh));
+            gpuMesh.UploadIndices(_device, mesh.Indices);
+        }
+        return gpuMesh;
     }
 
     internal static VeldridVertex[] BuildVertices(Mesh mesh)
@@ -735,6 +763,12 @@ public sealed class VeldridSceneRenderer : IDisposable
         for (int i = _frameResources.Count - 1; i >= 0; i--) _frameResources[i].Dispose();
         _frameResources.Clear();
         _textures.Clear();
+        foreach (var mesh in _staticGeometry.Keys.Where(mesh => !_seenStaticGeometry.Contains(mesh)).ToArray())
+        {
+            _staticGeometry[mesh].Mesh.Dispose();
+            _staticGeometry.Remove(mesh);
+        }
+        _seenStaticGeometry.Clear();
     }
 
     public void Dispose()
@@ -745,6 +779,8 @@ public sealed class VeldridSceneRenderer : IDisposable
         _device.WaitForIdle();
         _commands.Dispose();
         ReleaseFrame();
+        foreach (var cached in _staticGeometry.Values) cached.Mesh.Dispose();
+        _staticGeometry.Clear();
         foreach (var pipeline in _pipelines.Values) pipeline.Dispose();
         foreach (var persistent in _persistentTextures.Values) persistent.Texture.Dispose();
         _persistentTextures.Clear();
