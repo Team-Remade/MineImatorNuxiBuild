@@ -2837,7 +2837,7 @@ public partial class Viewport : UiPanel
         {
             UiText.Disabled($"Experimental {VeldridContext.GraphicsDevice!.BackendType} scene | OpenGL UI and editor overlays");
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Veldrid draws the sky, background image, directional, point and spot lighting, fog and these camera effects: colour management and correction, vignette, chromatic aberration, distort, heat distort, anti-aliasing, film grain, pixelate and cinematic bars. Shadows, ambient occlusion, indirect lighting and glow are not drawn in this mode. Outline, bloom, depth of field and lens dirt switch the frame to the OpenGL scene. Camera previews and exports use OpenGL. GPU readback displays this viewport.");
+                ImGui.SetTooltip("Veldrid draws the sky, background image and the production scene shader with ambient, directional, point and spot lighting, fog, PBR materials, wind, normal/emission maps, alpha masks, text outlines and glint. Native camera effects include colour management/correction, vignette, chromatic aberration, distort, heat distort, FXAA, film grain, pixelate, bloom, depth of field, lens dirt, watermark and cinematic bars. Directional/point shadows, SSS blur, ambient occlusion, indirect lighting, glow and Outline are not ported yet. Camera previews and exports use OpenGL; viewport presentation still uses GPU readback.");
         }
 
         var size = ImGui.GetContentRegionAvail();

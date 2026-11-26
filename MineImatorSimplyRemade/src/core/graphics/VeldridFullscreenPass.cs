@@ -32,7 +32,15 @@ public sealed class VeldridFullscreenPass : IDisposable
         /// <summary>Premultiplied alpha over the target.</summary>
         Premultiplied,
         /// <summary>Additive colour accumulation without changing the target alpha.</summary>
-        Additive
+        Additive,
+        /// <summary>Source-alpha weighted additive colour, used by scene materials.</summary>
+        AdditiveAlpha,
+        /// <summary>Source-alpha weighted subtractive colour, used by scene materials.</summary>
+        Subtract,
+        /// <summary>Destination-colour multiply blend, used by scene materials.</summary>
+        Multiply,
+        /// <summary>Inverse-destination-colour screen blend, used by scene materials.</summary>
+        Screen
     }
 
     private readonly GraphicsDevice _device;
@@ -46,7 +54,8 @@ public sealed class VeldridFullscreenPass : IDisposable
     private readonly Dictionary<string, DeviceBuffer?> _uniformBlockBuffers = new(StringComparer.Ordinal);
     private readonly TextureView?[] _textures;
     private readonly Sampler?[] _samplers;
-    private readonly Dictionary<(OutputDescription Output, BlendMode Blend), Pipeline> _pipelines = new();
+    private readonly Dictionary<(OutputDescription Output, BlendMode Blend, bool DepthTest, bool DepthWrite,
+        FaceCullMode Cull, PolygonFillMode Fill, bool WriteAuxiliaryAttachments), Pipeline> _pipelines = new();
     private readonly List<DeviceBuffer> _uniformBuffers = new();
     private readonly List<ResourceSet> _frameSets = new();
     private int _uniformBuffersUsed;
@@ -58,14 +67,15 @@ public sealed class VeldridFullscreenPass : IDisposable
     public static bool FlipClipY(GraphicsDevice device) => device.IsClipSpaceYInverted != device.IsUvOriginTopLeft;
 
     public VeldridFullscreenPass(GraphicsDevice device, string fragmentShader, string vertexShader = "edge.vert",
-        VertexLayoutDescription? vertexLayout = null)
+        VertexLayoutDescription? vertexLayout = null, bool disableShaderGraphs = false, bool remapClipZ = false)
     {
         _device = device ?? throw new ArgumentNullException(nameof(device));
         _vertexLayout = vertexLayout;
         Name = fragmentShader;
         string vertexSource = MineImatorSimplyRemade.core.mdl.Shader.LoadShaderSource(vertexShader);
         string fragmentSource = MineImatorSimplyRemade.core.mdl.Shader.LoadShaderSource(fragmentShader);
-        _program = VeldridGlslAdapter.Adapt(vertexSource, fragmentSource, FlipClipY(device));
+        _program = VeldridGlslAdapter.Adapt(vertexSource, fragmentSource, FlipClipY(device), remapClipZ,
+            disableShaderGraphs);
         _shaders = CompileShaders(device, _program, fragmentShader);
         try
         {
@@ -264,7 +274,9 @@ public sealed class VeldridFullscreenPass : IDisposable
     /// from <paramref name="vertexBuffer"/> when the pass was built with a vertex layout.
     /// </summary>
     public void Draw(CommandList commands, Framebuffer target, BlendMode blend = BlendMode.Opaque,
-        DeviceBuffer? vertexBuffer = null, uint vertexCount = 3)
+        DeviceBuffer? vertexBuffer = null, uint vertexCount = 3, bool depthTest = false, bool depthWrite = false,
+        FaceCullMode cull = FaceCullMode.None, PolygonFillMode fill = PolygonFillMode.Solid,
+        bool writeAuxiliaryAttachments = true, bool issueDraw = true)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if ((_vertexLayout != null) != (vertexBuffer != null))
@@ -301,10 +313,11 @@ public sealed class VeldridFullscreenPass : IDisposable
         commands.SetFramebuffer(target);
         commands.SetViewport(0, new Viewport(0, 0, target.Width, target.Height, 0, 1));
         commands.SetScissorRect(0, 0, 0, target.Width, target.Height);
-        commands.SetPipeline(GetPipeline(target.OutputDescription, blend));
+        commands.SetPipeline(GetPipeline(target.OutputDescription, blend, depthTest, depthWrite, cull, fill,
+            writeAuxiliaryAttachments));
         if (vertexBuffer != null) commands.SetVertexBuffer(0, vertexBuffer);
         commands.SetGraphicsResourceSet(0, set);
-        commands.Draw(vertexCount, 1, 0, 0);
+        if (issueDraw) commands.Draw(vertexCount, 1, 0, 0);
     }
 
     private DeviceBuffer RentUniformBuffer()
@@ -315,9 +328,11 @@ public sealed class VeldridFullscreenPass : IDisposable
         return _uniformBuffers[_uniformBuffersUsed++];
     }
 
-    private Pipeline GetPipeline(OutputDescription output, BlendMode blend)
+    private Pipeline GetPipeline(OutputDescription output, BlendMode blend, bool depthTest, bool depthWrite,
+        FaceCullMode cull, PolygonFillMode fill, bool writeAuxiliaryAttachments)
     {
-        if (_pipelines.TryGetValue((output, blend), out var existing)) return existing;
+        var key = (output, blend, depthTest, depthWrite, cull, fill, writeAuxiliaryAttachments);
+        if (_pipelines.TryGetValue(key, out var existing)) return existing;
         var attachment = blend switch
         {
             BlendMode.Alpha => new BlendAttachmentDescription(true, BlendFactor.SourceAlpha, BlendFactor.InverseSourceAlpha,
@@ -326,22 +341,37 @@ public sealed class VeldridFullscreenPass : IDisposable
                 BlendFunction.Add, BlendFactor.One, BlendFactor.InverseSourceAlpha, BlendFunction.Add),
             BlendMode.Additive => new BlendAttachmentDescription(true, BlendFactor.One, BlendFactor.One,
                 BlendFunction.Add, BlendFactor.Zero, BlendFactor.One, BlendFunction.Add),
+            BlendMode.AdditiveAlpha => new BlendAttachmentDescription(true, BlendFactor.SourceAlpha, BlendFactor.One,
+                BlendFunction.Add, BlendFactor.One, BlendFactor.InverseSourceAlpha, BlendFunction.Add),
+            BlendMode.Subtract => new BlendAttachmentDescription(true, BlendFactor.SourceAlpha, BlendFactor.One,
+                BlendFunction.ReverseSubtract, BlendFactor.One, BlendFactor.InverseSourceAlpha, BlendFunction.Add),
+            BlendMode.Multiply => new BlendAttachmentDescription(true, BlendFactor.DestinationColor,
+                BlendFactor.InverseSourceAlpha, BlendFunction.Add, BlendFactor.One, BlendFactor.InverseSourceAlpha, BlendFunction.Add),
+            BlendMode.Screen => new BlendAttachmentDescription(true, BlendFactor.InverseDestinationColor,
+                BlendFactor.One, BlendFunction.Add, BlendFactor.One, BlendFactor.InverseSourceAlpha, BlendFunction.Add),
             _ => BlendAttachmentDescription.OverrideBlend
         };
         var attachments = new BlendAttachmentDescription[Math.Max(1, output.ColorAttachments.Length)];
-        Array.Fill(attachments, attachment);
+        Array.Fill(attachments, BlendAttachmentDescription.OverrideBlend);
+        attachments[0] = attachment;
+        if (!writeAuxiliaryAttachments)
+            for (int i = 1; i < attachments.Length; i++)
+                attachments[i] = new BlendAttachmentDescription(false,
+                    (ColorWriteMask)0, BlendFactor.One, BlendFactor.Zero, BlendFunction.Add,
+                    BlendFactor.One, BlendFactor.Zero, BlendFunction.Add);
         var pipeline = _device.ResourceFactory.CreateGraphicsPipeline(new GraphicsPipelineDescription
         {
             BlendState = new BlendStateDescription(RgbaFloat.Black, attachments),
-            DepthStencilState = DepthStencilStateDescription.Disabled,
-            RasterizerState = new RasterizerStateDescription(FaceCullMode.None, PolygonFillMode.Solid,
-                FrontFace.CounterClockwise, depthClipEnabled: false, scissorTestEnabled: false),
+            DepthStencilState = new DepthStencilStateDescription(depthTest, depthWrite, ComparisonKind.Less),
+            RasterizerState = new RasterizerStateDescription(cull, fill,
+                FlipClipY(_device) ? FrontFace.Clockwise : FrontFace.CounterClockwise,
+                depthClipEnabled: depthTest || depthWrite, scissorTestEnabled: false),
             PrimitiveTopology = PrimitiveTopology.TriangleList,
             ResourceLayouts = [_layout],
             ShaderSet = new ShaderSetDescription(_vertexLayout is { } layout ? [layout] : Array.Empty<VertexLayoutDescription>(), _shaders),
             Outputs = output
         });
-        _pipelines.Add((output, blend), pipeline);
+        _pipelines.Add(key, pipeline);
         return pipeline;
     }
 

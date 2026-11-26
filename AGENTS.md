@@ -679,9 +679,11 @@ exports and picking still use OpenGL.
 
 What the Veldrid viewport covers:
 
-- Scene: ambient, directional, point and spot lighting, fog, wind, material colours,
-  normal and emission maps and the end portal. Shadows, ambient occlusion, indirect
-  lighting, subsurface scattering and glow are not drawn in this mode.
+- Scene: the production `simple.vert`/`simple.frag` shaders render ambient, directional,
+  point and spot lighting, fog, wind, PBR/material colours, normal/emission maps, alpha
+  masks, text outlines, glint and the end portal. The MRT target includes scene colour,
+  GI albedo/radiance and outline normals. Directional/point shadow caster passes, the SSS
+  blur, ambient occlusion, indirect-lighting composition and glow are still not drawn.
 - Backdrop (`Viewport.DrawVeldridBackdrop`): the procedural, sphere and box sky and the
   background image, drawn before the geometry with `sky.frag` and `background.frag`.
 - Camera effects (`VeldridCameraEffects`, assembled by `Viewport.BuildVeldridEffects` in the
@@ -691,8 +693,8 @@ What the Veldrid viewport covers:
   match their production OpenGL passes within two channel levels on the graphics regression;
   watermark texture pixels match within one level.
 - A frame switches to the OpenGL scene, with the reason shown above the viewport, for custom
-  shader-graph materials, Outline and Lens Dirt (`Viewport.GetVeldridFallbackReason`). Watermark
-  and cinematic bars use OpenGL only when the configured watermark image cannot be imported.
+  shader-graph materials and Outline (`Viewport.GetVeldridFallbackReason`). Watermark and
+  cinematic bars use OpenGL only when the configured watermark image cannot be imported.
 
 How the port works:
 
@@ -705,10 +707,10 @@ How the port works:
   parameters of helper functions are split into texture and sampler, and identifiers that GLSL
   4.x reserves (`sample`, `filter`, ...) are renamed. Sampler arrays require literal indices and
   share one sampler across their separate texture bindings; interface blocks and sampler arrays
-  passed to helper functions are not supported. The production `simple.*` shaders compile through
-  the adapter with the shader-graph interpreter disabled, but the live scene renderer still uses
-  its existing equivalent shader and per-mesh writer; the real shader and its full uniform writer
-  are not wired into the scene yet.
+  passed to helper functions are not supported. The live scene pass uses the production
+  `simple.*` shaders with shader-graph interpretation disabled, a `SceneData` block and a per-mesh
+  writer. Skinned/bent geometry is still CPU-evaluated for this pass; wind remains in the vertex
+  shader. The target's additional GI and outline attachments are captured but not consumed yet.
 - Veldrid targets are stored in OpenGL row order (row zero is the bottom of the picture). The
   adapter and the scene vertex shader negate clip-space Y when the device's UV origin is
   top-left (`VeldridFullscreenPass.FlipClipY`), and the scene pipelines use the matching front
@@ -734,10 +736,9 @@ pass's settings, skip rules and uniforms; add a case to `VeldridEffectParity`
 `Viewport.BuildVeldridEffects` (or remove its type from `GetVeldridFallbackReason`); and list new
 shaders in `VeldridFullscreenShaders` so the CPU compile check covers them.
 
-The next large steps are wiring the compiled `simple.*` shader into the scene pass with a complete
-`Mesh` uniform writer and MRT outputs; adding directional/point shadow maps and their caster
-passes; then porting AO, indirect lighting, glow, Outline and Lens Dirt. NuxT compute, shader graphs
-and fog volumes, previews, exports, picking and editor overlays remain outside this viewport port.
+The next large steps are adding native directional/point shadow maps and caster passes, then
+porting AO, indirect lighting, glow, and Outline. Scene shader-graph materials, fog volumes,
+NuxT compute, camera previews, exports, picking and editor overlays remain outside this viewport port.
 
 The bridge incurs GPU synchronization and CPU-transfer overhead and is not a performance
 upgrade. The viewport labels the experimental backend, and initialization or rendering failures

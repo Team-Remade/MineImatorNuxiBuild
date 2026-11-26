@@ -5,11 +5,15 @@ namespace MineImatorSimplyRemade.core.graphics;
 
 public class VeldridFramebuffer : IDisposable
 {
+    private readonly PixelFormat[] _colorFormats;
+
     public uint Width { get; private set; }
     public uint Height { get; private set; }
 
     public Texture ColorTexture { get; private set; } = null!;
     public TextureView ColorTextureView { get; private set; } = null!;
+    public IReadOnlyList<Texture> ColorTextures { get; private set; } = Array.Empty<Texture>();
+    public IReadOnlyList<TextureView> ColorTextureViews { get; private set; } = Array.Empty<TextureView>();
     public Texture? DepthTexture { get; private set; }
     public TextureView? DepthTextureView { get; private set; }
     public Framebuffer Framebuffer { get; private set; } = null!;
@@ -40,7 +44,8 @@ public class VeldridFramebuffer : IDisposable
         bool hasDepth = true,
         TextureSampleCount sampleCount = TextureSampleCount.Count1,
         PixelFormat colorFormat = PixelFormat.R8_G8_B8_A8_UNorm,
-        PixelFormat depthFormat = PixelFormat.D24_UNorm_S8_UInt)
+        PixelFormat depthFormat = PixelFormat.D24_UNorm_S8_UInt,
+        params PixelFormat[] additionalColorFormats)
     {
         Width = Math.Max(1, width);
         Height = Math.Max(1, height);
@@ -48,6 +53,7 @@ public class VeldridFramebuffer : IDisposable
         SampleCount = sampleCount;
         ColorFormat = colorFormat;
         DepthFormat = depthFormat;
+        _colorFormats = [colorFormat, .. additionalColorFormats];
 
         Recreate(gd, Width, Height);
     }
@@ -71,23 +77,21 @@ public class VeldridFramebuffer : IDisposable
         // Views require Sampled or Storage usage, including multisampled views.
         var colorUsage = TextureUsage.RenderTarget | TextureUsage.Sampled;
 
-        var colorDesc = new TextureDescription(
-            width,
-            height,
-            1,
-            1,
-            1,
-            ColorFormat,
-            colorUsage,
-            TextureType.Texture2D,
-            SampleCount);
-
-        ColorTexture = gd.ResourceFactory.CreateTexture(colorDesc);
-        ColorTextureView = gd.ResourceFactory.CreateTextureView(ColorTexture);
-
-        FramebufferAttachmentDescription[] colorAttachments = [
-            new FramebufferAttachmentDescription(ColorTexture, 0)
-        ];
+        var colorTextures = new Texture[_colorFormats.Length];
+        var colorViews = new TextureView[_colorFormats.Length];
+        var colorAttachments = new FramebufferAttachmentDescription[_colorFormats.Length];
+        for (int i = 0; i < _colorFormats.Length; i++)
+        {
+            var colorDesc = new TextureDescription(
+                width, height, 1, 1, 1, _colorFormats[i], colorUsage, TextureType.Texture2D, SampleCount);
+            colorTextures[i] = gd.ResourceFactory.CreateTexture(colorDesc);
+            colorViews[i] = gd.ResourceFactory.CreateTextureView(colorTextures[i]);
+            colorAttachments[i] = new FramebufferAttachmentDescription(colorTextures[i], 0);
+        }
+        ColorTextures = colorTextures;
+        ColorTextureViews = colorViews;
+        ColorTexture = colorTextures[0];
+        ColorTextureView = colorViews[0];
 
         FramebufferAttachmentDescription? depthAttachment = null;
         if (HasDepth)
@@ -155,7 +159,9 @@ public class VeldridFramebuffer : IDisposable
         Framebuffer?.Dispose();
         DepthTextureView?.Dispose();
         DepthTexture?.Dispose();
-        ColorTextureView?.Dispose();
-        ColorTexture?.Dispose();
+        foreach (var colorView in ColorTextureViews) colorView.Dispose();
+        foreach (var colorTexture in ColorTextures) colorTexture.Dispose();
+        ColorTextureViews = Array.Empty<TextureView>();
+        ColorTextures = Array.Empty<Texture>();
     }
 }

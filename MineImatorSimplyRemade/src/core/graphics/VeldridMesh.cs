@@ -11,11 +11,25 @@ public struct VeldridVertex
     public vec3 Position;
     public vec3 Normal;
     public vec2 TexCoord;
+    public ivec4 BoneIndices;
+    public vec4 BoneWeights;
+    public vec4 InstanceM0;
+    public vec4 InstanceM1;
+    public vec4 InstanceM2;
+    public vec4 InstanceM3;
+    public float BendSourceSegmentPosition;
 
     public static readonly VertexLayoutDescription LayoutDescription = new(
         new VertexElementDescription("Position", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
         new VertexElementDescription("Normal", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float3),
-        new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2)
+        new VertexElementDescription("TexCoord", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float2),
+        new VertexElementDescription("BoneIndices", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Int4),
+        new VertexElementDescription("BoneWeights", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4),
+        new VertexElementDescription("InstanceM0", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4),
+        new VertexElementDescription("InstanceM1", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4),
+        new VertexElementDescription("InstanceM2", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4),
+        new VertexElementDescription("InstanceM3", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float4),
+        new VertexElementDescription("BendSourceSegmentPosition", VertexElementSemantic.TextureCoordinate, VertexElementFormat.Float1)
     );
 }
 

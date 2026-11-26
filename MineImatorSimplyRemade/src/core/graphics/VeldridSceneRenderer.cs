@@ -18,16 +18,17 @@ namespace MineImatorSimplyRemade.core.graphics;
 /// Experimental native offscreen scene pass. OpenGL is used only to import textures
 /// and upload the completed image; the caller owns both devices and presentation.
 /// Call on the thread with the source/destination OpenGL context current.
-/// Scene lighting includes ambient, directional, point and spot illumination, plus
-/// distance and height fog. Shadows, SSS and mipmaps are not implemented.
+/// Scene lighting uses the production <c>simple.*</c> shaders for ambient, directional,
+/// point and spot illumination, PBR materials, emission, glint and distance/height fog.
+/// Directional/point shadow maps and the SSS blur pass are not implemented.
 /// Camera effects can run natively: pass a <see cref="VeldridPostProcessor"/> and an ordered
 /// effect list to <see cref="EndFrame"/>, and they execute on the finished scene before readback.
 /// The target is stored in OpenGL row order (row zero is the bottom of the picture), so
 /// OpenGL-written shaders that read <c>gl_FragCoord</c> or call <c>texelFetch</c> behave identically.
-/// Alpha-mask opacity is supported, but independent text outline colors are not.
+/// The scene target also captures GI albedo/radiance and outline normals for future passes.
 /// Animated spritesheets sample scene timeline time, with a renderer-local clock as fallback.
 /// </summary>
-public sealed class VeldridSceneRenderer : IDisposable
+public sealed partial class VeldridSceneRenderer : IDisposable
 {
     private const int MaxPointLights = 16;
 
@@ -295,6 +296,7 @@ public sealed class VeldridSceneRenderer : IDisposable
             _pointSampler = factory.CreateSampler(sampler);
             sampler.Filter = SamplerFilter.MinLinear_MagLinear_MipPoint;
             _linearSampler = factory.CreateSampler(sampler);
+            InitializeNativeScenePass();
         }
         catch
         {
@@ -320,7 +322,12 @@ public sealed class VeldridSceneRenderer : IDisposable
         {
             _target?.Dispose();
             _staging?.Dispose();
-            _target = new VeldridFramebuffer(_device, width, height, depthFormat: Veldrid.PixelFormat.R32_Float);
+            _target = new VeldridFramebuffer(_device, width, height,
+                depthFormat: Veldrid.PixelFormat.R32_Float,
+                additionalColorFormats: [
+                    Veldrid.PixelFormat.R16_G16_B16_A16_Float,
+                    Veldrid.PixelFormat.R16_G16_B16_A16_Float,
+                    Veldrid.PixelFormat.R16_G16_B16_A16_Float]);
             _staging = _device.ResourceFactory.CreateTexture(TextureDescription.Texture2D(
                 width, height, 1, 1, Veldrid.PixelFormat.R8_G8_B8_A8_UNorm, TextureUsage.Staging));
             _pixels = new byte[checked((int)(width * height * 4))];
@@ -332,12 +339,15 @@ public sealed class VeldridSceneRenderer : IDisposable
         _seenStaticGeometry.Clear();
         if (Mesh.AnimatedTextureTimelineTimeSeconds == null && Mesh.AdvanceAnimatedTextures)
             _animationTime += Mesh.DeltaTime * Mesh.AnimatedTextureSpeedScale;
+        UpdateNativeSceneData();
         _commands.Begin();
         _recording = true;
         _commands.SetFramebuffer(_target.Framebuffer);
         _commands.SetFullViewports();
         _commands.SetFullScissorRects();
         _commands.ClearColorTarget(0, new RgbaFloat(clearColor.X, clearColor.Y, clearColor.Z, clearColor.W));
+        for (int attachment = 1; attachment < _target.ColorTextures.Count; attachment++)
+            _commands.ClearColorTarget((uint)attachment, RgbaFloat.Black);
         _commands.ClearDepthStencil(1f);
     }
 
@@ -348,6 +358,11 @@ public sealed class VeldridSceneRenderer : IDisposable
         if (!_recording) throw new InvalidOperationException("BeginFrame must be called before Draw.");
         ArgumentNullException.ThrowIfNull(mesh);
         if (mesh.PickOnly || mesh.Vertices.Count == 0 || mesh.Alpha <= 0) return;
+        if (_nativeScenePass != null)
+        {
+            DrawNativeScene(mesh, model, forceUnshaded);
+            return;
+        }
         bool cacheGeometry = CanCacheGeometry(mesh);
         VeldridMesh gpuMesh;
         if (cacheGeometry)
@@ -477,9 +492,12 @@ public sealed class VeldridSceneRenderer : IDisposable
                 sourceColor, destinationColor, colorFunction,
                 BlendFactor.One,
                 alphaClip ? BlendFactor.Zero : BlendFactor.InverseSourceAlpha, BlendFunction.Add);
+            var blendAttachments = new BlendAttachmentDescription[_target!.Framebuffer.OutputDescription.ColorAttachments.Length];
+            Array.Fill(blendAttachments, BlendAttachmentDescription.OverrideBlend);
+            blendAttachments[0] = blend;
             pipeline = _device.ResourceFactory.CreateGraphicsPipeline(new GraphicsPipelineDescription
             {
-                BlendState = new BlendStateDescription(RgbaFloat.Black, blend),
+                BlendState = new BlendStateDescription(RgbaFloat.Black, blendAttachments),
                 DepthStencilState = new DepthStencilStateDescription(!mesh.DepthTestDisabled,
                     !mesh.DepthTestDisabled && !mesh.DepthWriteDisabled && !mesh.RequiresTranslucentPass,
                     ComparisonKind.Less),
@@ -541,7 +559,14 @@ public sealed class VeldridSceneRenderer : IDisposable
                 Normal = sourceGeometry
                     ? (mesh.Normals.Count == vertices.Length ? mesh.Normals[i] : vec3.UnitY)
                     : (mesh.RenderNormals.Count == vertices.Length ? mesh.RenderNormals[i] : vec3.UnitY),
-                TexCoord = uv
+                TexCoord = uv,
+                BoneIndices = new ivec4(-1, -1, -1, -1),
+                InstanceM0 = new vec4(1, 0, 0, 0),
+                InstanceM1 = new vec4(0, 1, 0, 0),
+                InstanceM2 = new vec4(0, 0, 1, 0),
+                InstanceM3 = new vec4(0, 0, 0, 1),
+                BendSourceSegmentPosition = mesh.BendSourceSegmentPositions.Count == vertices.Length
+                    ? mesh.BendSourceSegmentPositions[i] : 0f
             };
         }
         if (morph || mesh.Normals.Count != vertices.Length)
@@ -712,6 +737,7 @@ public sealed class VeldridSceneRenderer : IDisposable
             // Wait before disposing even if submission/map/upload failed.
             _device.WaitForIdle();
             postProcessor?.ReleaseFrame();
+            _nativeScenePass?.ReleaseFrame();
             ReleaseFrame();
         }
     }
@@ -777,6 +803,7 @@ public sealed class VeldridSceneRenderer : IDisposable
         _disposed = true;
         if (_recording) { _commands.End(); _recording = false; }
         _device.WaitForIdle();
+        DisposeNativeScenePass();
         _commands.Dispose();
         ReleaseFrame();
         foreach (var cached in _staticGeometry.Values) cached.Mesh.Dispose();

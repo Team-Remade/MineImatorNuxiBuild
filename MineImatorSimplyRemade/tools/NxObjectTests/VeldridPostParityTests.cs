@@ -3,6 +3,7 @@ using GlmSharp;
 using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core;
 using MineImatorSimplyRemade.core.graphics;
+using MineImatorSimplyRemade.core.mdl;
 using MineImatorSimplyRemade.core.mdl.meshes;
 using MineImatorSimplyRemade.core.ui;
 using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
@@ -302,6 +303,95 @@ internal static partial class Program
         Check(redFacesCamera ? veldridFront > 100 && veldridBack <= 5 : veldridBack > 100 && veldridFront <= 5,
             $"Veldrid culls the same face as OpenGL (OpenGL red {glFront}/blue {glBack}, Veldrid red {veldridFront}/blue {veldridBack} pixels)");
         Console.WriteLine($"  Culling: OpenGL red {glFront}/blue {glBack}, Veldrid red {veldridFront}/blue {veldridBack} pixels");
+
+        var oldSceneBuffer = Mesh.SceneUBO;
+        var oldAmbient = Mesh.GlobalAmbientColor;
+        float oldAmbientStrength = Mesh.GlobalAmbientStrength;
+        var oldFillColor = Mesh.GlobalFillLightColor;
+        float oldFillStrength = Mesh.GlobalFillLightStrength;
+        var oldSunColor = Mesh.GlobalSunFillLightColor;
+        var oldMoonColor = Mesh.GlobalMoonFillLightColor;
+        bool oldShadows = Mesh.ShadowsEnabled;
+        uint oldShadowMapTexture = Mesh.ShadowMapTexture;
+        bool oldFog = Mesh.FogEnabled, oldHeightFog = Mesh.HeightFogEnabled;
+        bool oldIndirectWorld = Mesh.IndirectWorldEnabled;
+        var oldPointLights = Mesh.PointLights.ToArray();
+        try
+        {
+            var ambient = new vec3(0.12f, 0.1f, 0.08f);
+            var lightColor = new vec3(0.7f, 0.72f, 0.75f);
+            var lightDirection = new vec3(1f, 1f, 1f).Normalized;
+            Mesh.GlobalAmbientColor = ambient;
+            Mesh.GlobalAmbientStrength = 1f;
+            Mesh.GlobalFillLightColor = lightColor;
+            Mesh.GlobalFillLightStrength = 1f;
+            Mesh.GlobalSunFillLightColor = Mesh.GlobalMoonFillLightColor = vec3.Zero;
+            Mesh.ShadowsEnabled = false;
+            Mesh.ShadowMapTexture = 0;
+            Mesh.FogEnabled = Mesh.HeightFogEnabled = false;
+            Mesh.IndirectWorldEnabled = false;
+            Mesh.PointLights.Clear();
+            using var sceneData = new SceneUniformBuffer(gl);
+            sceneData.Upload(mat4.Identity, ambient, lightDirection, lightColor,
+                vec3.UnitY, vec3.Zero, vec3.UnitY, vec3.Zero, 0, false, false, false);
+            Mesh.SceneUBO = sceneData;
+            using var litQuad = new PlaneMesh(gl, 3, 3, PlaneOrientation.XY)
+                { BlendColor = new vec4(0.7f, 0.6f, 0.5f, 1f), Unlit = false, DoubleSided = true };
+            preview.Render([litQuad], "lit-scene-parity", 0, camera: camera);
+            byte[] glLit = oracle.Read(preview.ColorTexture, 64, 64);
+            renderer.BeginFrame(64, 64, camera.GetViewMatrix(), camera.GetProjectionMatrix(1), new System.Numerics.Vector4(0.12f, 0.12f, 0.14f, 1));
+            renderer.Draw(litQuad, mat4.Identity);
+            renderer.EndFrame(preview.ColorTexture);
+            byte[] veldridLit = oracle.Read(preview.ColorTexture, 64, 64);
+            int maxDifference = 0;
+            long totalDifference = 0;
+            for (int i = 0; i < glLit.Length; i++)
+            {
+                int difference = Math.Abs(glLit[i] - veldridLit[i]);
+                maxDifference = Math.Max(maxDifference, difference);
+                totalDifference += difference;
+            }
+            double meanDifference = totalDifference / (double)glLit.Length;
+            Check(maxDifference <= 3 && meanDifference < 0.2,
+                $"Lit production scene shader matches OpenGL (max {maxDifference}, mean {meanDifference:F3} channel levels)");
+
+            Mesh.PointLights.Add((new vec3(0f, 0f, 2f), new vec3(0.9f, 0.82f, 0.7f), 8f, 1f,
+                -1, vec3.Zero, 0f, 0f, 0f, 0.5f, false));
+            preview.Render([litQuad], "lit-point-light-parity", 0, camera: camera);
+            glLit = oracle.Read(preview.ColorTexture, 64, 64);
+            renderer.BeginFrame(64, 64, camera.GetViewMatrix(), camera.GetProjectionMatrix(1), new System.Numerics.Vector4(0.12f, 0.12f, 0.14f, 1));
+            renderer.Draw(litQuad, mat4.Identity);
+            renderer.EndFrame(preview.ColorTexture);
+            veldridLit = oracle.Read(preview.ColorTexture, 64, 64);
+            maxDifference = 0;
+            totalDifference = 0;
+            for (int i = 0; i < glLit.Length; i++)
+            {
+                int difference = Math.Abs(glLit[i] - veldridLit[i]);
+                maxDifference = Math.Max(maxDifference, difference);
+                totalDifference += difference;
+            }
+            meanDifference = totalDifference / (double)glLit.Length;
+            Check(maxDifference <= 3 && meanDifference < 0.2,
+                $"Point-lit production scene shader matches OpenGL (max {maxDifference}, mean {meanDifference:F3} channel levels)");
+        }
+        finally
+        {
+            Mesh.SceneUBO = oldSceneBuffer;
+            Mesh.GlobalAmbientColor = oldAmbient;
+            Mesh.GlobalAmbientStrength = oldAmbientStrength;
+            Mesh.GlobalFillLightColor = oldFillColor;
+            Mesh.GlobalFillLightStrength = oldFillStrength;
+            Mesh.GlobalSunFillLightColor = oldSunColor;
+            Mesh.GlobalMoonFillLightColor = oldMoonColor;
+            Mesh.ShadowsEnabled = oldShadows;
+            Mesh.ShadowMapTexture = oldShadowMapTexture;
+            Mesh.FogEnabled = oldFog;
+            Mesh.HeightFogEnabled = oldHeightFog;
+            Mesh.IndirectWorldEnabled = oldIndirectWorld;
+            Mesh.PointLights.Clear();
+            Mesh.PointLights.AddRange(oldPointLights);
+        }
     }
 
     /// <summary>
