@@ -1,5 +1,6 @@
 using System.Numerics;
 using MineImatorSimplyRemade.core.mdl;
+using MineImatorSimplyRemade.core.mdl.material;
 using Silk.NET.OpenGL;
 
 namespace MineImatorSimplyRemade.core.graphics;
@@ -26,8 +27,12 @@ public sealed class NuxTComputeRenderer : IDisposable
     private const int TlasInstanceIndexTexture = 12;
     private const int InstanceTransformTexture = 13;
     private const int InstanceInfoTexture = 14;
-    private readonly uint[] _sceneTextures = new uint[15];
-    private readonly int[] _textureWidths = new int[15];
+    // Rows of compiled shader graphs, then rows of path polylines; see shader_graph.glsl.
+    private const int ShaderGraphTexture = 15;
+    // 11 surface texels, then graph info, bounds minimum and frame, bounds size, and path rows (nuxt.comp).
+    private const int MaterialStride = 15;
+    private readonly uint[] _sceneTextures = new uint[16];
+    private readonly int[] _textureWidths = new int[16];
     private readonly int _maxTextureSize;
     private readonly GL _gl;
     private uint _program;
@@ -442,6 +447,26 @@ public sealed class NuxTComputeRenderer : IDisposable
         if (texturePixelCount > int.MaxValue)
             throw new InvalidOperationException("NuxT texture data exceeds the addressable GPU image range.");
 
+        // Each distinct graph program is one row of the graph texture; resolved path polylines follow as rows.
+        var graphRows = new Dictionary<ShaderGraphProgram, int>(ReferenceEqualityComparer.Instance);
+        var graphPrograms = new List<ShaderGraphProgram>();
+        var pathRows = new Dictionary<Vector3[], int>(ReferenceEqualityComparer.Instance);
+        var pathPolylines = new List<Vector3[]>();
+        foreach (NuxTMaterial material in materials)
+        {
+            if (material.ShaderGraph is not { } graph)
+                continue;
+            if (graphRows.TryAdd(graph.Program, graphPrograms.Count))
+                graphPrograms.Add(graph.Program);
+            foreach (Vector3[]? path in graph.Paths)
+                if (path is { Length: NuxTShaderGraph.PathSamples } && pathRows.TryAdd(path, pathPolylines.Count))
+                    pathPolylines.Add(path);
+        }
+        var graphTexels = new Vector4[materials.Count * 4];
+        for (int i = 0; i < materials.Count; i++)
+            GetGraphMaterialTexels(materials[i], graphRows, pathRows, graphPrograms.Count).CopyTo(graphTexels, i * 4);
+        _hasVolumes = materials.Exists(material => material.IsFogVolume);
+
         int[] materialTextureReferences = new int[materials.Count * 12];
         Array.Fill(materialTextureReferences, -1);
         for (int i = 0; i < materials.Count; i++)
@@ -478,9 +503,16 @@ public sealed class NuxTComputeRenderer : IDisposable
         UploadIntTexture(TriangleMaterialTexture, triangleMaterials.Length, 1,
             (index, row, offset) => row[offset] = triangleMaterials[index]);
         CheckUploadError("triangle materials");
-        UploadFloatTexture(MaterialTexture, checked(materials.Count * 11), (index, row, offset) =>
-            SetVector(row, offset, GetMaterialValue(materials[index / 11], index % 11)));
+        UploadFloatTexture(MaterialTexture, checked(materials.Count * MaterialStride), (index, row, offset) =>
+        {
+            int material = index / MaterialStride, field = index % MaterialStride;
+            SetVector(row, offset, field < 11
+                ? GetMaterialValue(materials[material], field)
+                : graphTexels[material * 4 + field - 11]);
+        });
         CheckUploadError("materials");
+        UploadGraphTexture(graphPrograms, pathPolylines);
+        CheckUploadError("shader graphs");
         UploadIntTexture(MaterialTextureReferences, checked(materials.Count * 3), 4, (index, row, offset) =>
             Array.Copy(materialTextureReferences, index * 4, row, offset, 4));
         CheckUploadError("material texture references");
@@ -592,6 +624,7 @@ public sealed class NuxTComputeRenderer : IDisposable
         }
     }
 
+    private bool _hasVolumes;
     private int _nodeCount;
     private int _triangleCount;
     private int _tlasNodeCount;
@@ -630,6 +663,53 @@ public sealed class NuxTComputeRenderer : IDisposable
             9 => new Vector4(material.SubtractRgb, 0f),
             _ => new Vector4(material.SubtractHsv, 0f)
         };
+    }
+
+    // Texels 11 to 14 of a material: (graph row + 1, fog volume, translucent, time), (bounds minimum, frame),
+    // (bounds size), and the absolute graph-texture row + 1 of each path slot.
+    private static Vector4[] GetGraphMaterialTexels(NuxTMaterial material, Dictionary<ShaderGraphProgram, int> graphRows,
+        Dictionary<Vector3[], int> pathRows, int graphCount)
+    {
+        if (material.ShaderGraph is not { } graph)
+            return [Vector4.Zero, Vector4.Zero, Vector4.Zero, Vector4.Zero];
+        Span<float> paths = stackalloc float[4];
+        for (int slot = 0; slot < Math.Min(4, graph.Paths.Count); slot++)
+            if (graph.Paths[slot] is { } path && pathRows.TryGetValue(path, out int row))
+                paths[slot] = graphCount + row + 1;
+        return
+        [
+            new Vector4(graphRows[graph.Program] + 1, graph.IsVolume ? 1f : 0f, graph.Translucent ? 1f : 0f, graph.Time),
+            new Vector4(graph.BoundsMin, graph.Frame),
+            new Vector4(graph.BoundsSize, 0f),
+            new Vector4(paths[0], paths[1], paths[2], paths[3])
+        ];
+    }
+
+    private unsafe void UploadGraphTexture(List<ShaderGraphProgram> programs, List<Vector3[]> paths)
+    {
+        const int width = ShaderGraph.MaxDataTexels;
+        int rows = Math.Max(1, programs.Count + paths.Count);
+        if (rows > _maxTextureSize || width > _maxTextureSize)
+            throw new InvalidOperationException("NuxT shader graphs exceed the GPU 2D texture dimensions.");
+        float[] texels = new float[checked(width * rows * 4)];
+        for (int row = 0; row < programs.Count; row++)
+            Array.Copy(programs[row].Data, 0, texels, row * width * 4, programs[row].Data.Length);
+        for (int path = 0; path < paths.Count; path++)
+        {
+            int offset = (programs.Count + path) * width * 4;
+            for (int i = 0; i < paths[path].Length; i++)
+                SetVector(texels, offset + i * 4, paths[path][i], 0f);
+        }
+        _textureWidths[ShaderGraphTexture] = width;
+        _gl.GenTextures(1, out _sceneTextures[ShaderGraphTexture]);
+        _gl.BindTexture(GLEnum.Texture2D, _sceneTextures[ShaderGraphTexture]);
+        fixed (float* pointer = texels)
+            _gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba32f, (uint)width, (uint)rows, 0, GLEnum.Rgba,
+                GLEnum.Float, pointer);
+        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMagFilter.Nearest);
+        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+        _gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
     }
 
     private static Vector4 GetPointLightValue(NuxTLight light, int field) => field switch
@@ -908,6 +988,12 @@ public sealed class NuxTComputeRenderer : IDisposable
         SetUniform("uCameraUp", camera.Up);
         SetUniform("uEnvironment", scene.EnvironmentColor);
         SetUniform("uAmbient", scene.AmbientLight);
+        SetUniform("uShaderGraphData", ShaderGraphTexture);
+        SetUniform("uHasVolumes", _hasVolumes ? 1 : 0);
+        SetUniform("uVolumeStepSize", settings.VolumeStepSize);
+        SetUniform("uVolumeMaxSteps", settings.VolumeMaxSteps);
+        SetUniform("uVolumeLightSamples", settings.VolumeLightSamples);
+        SetUniform("uVolumeShadows", settings.VolumeShadows ? 1 : 0);
         int tileOriginLocation = _gl.GetUniformLocation(_program, "uTileOrigin");
         for (int tileY = 0; tileY < height; tileY += DispatchTileSize)
         for (int tileX = 0; tileX < width; tileX += DispatchTileSize)

@@ -309,9 +309,9 @@ internal static partial class Program
             float Scale() => (float)typeof(Timeline).GetField("_pixelsPerFrame", flags)!.GetValue(timeline)!;
             float Scroll() => (float)typeof(Timeline).GetField("_hScrollOffset", flags)!.GetValue(timeline)!;
             bool popup = false;
-            void Draw(bool hovered = true, bool textInput = false)
+            void Draw(bool hovered = true, bool textInput = false, float? mouseX = null, float? mouseY = null)
             {
-                io.AddMousePosEvent(hovered ? 600 : 1600, 300);
+                io.AddMousePosEvent(hovered ? mouseX ?? 600 : 1600, mouseY ?? 300);
                 ImGui.NewFrame();
                 ImGui.SetNextWindowPos(new(1500, 0));
                 ImGui.SetNextWindowSize(new(300, 900));
@@ -329,6 +329,24 @@ internal static partial class Program
                 ImGui.SetNextWindowSize(new(1400, 700));
                 timeline.Render();
                 ImGui.Render();
+            }
+            float RulerPlayheadX()
+            {
+                var data = ImGui.GetDrawData();
+                float rulerTop = (float)typeof(Timeline).GetField("_timelineAreaTop", flags)!.GetValue(timeline)!;
+                float minX = float.PositiveInfinity;
+                float maxX = float.NegativeInfinity;
+                for (int i = 0; i < data.CmdListsCount; i++)
+                for (int j = 0; j < data.CmdLists[i].VtxBuffer.Size; j++)
+                {
+                    var vertex = data.CmdLists[i].VtxBuffer[j];
+                    if (vertex.Col != 0xFF3377FF || vertex.Pos.Y < rulerTop ||
+                        vertex.Pos.Y > rulerTop + 24f * UiTheme.Scale) continue;
+                    minX = Math.Min(minX, vertex.Pos.X);
+                    maxX = Math.Max(maxX, vertex.Pos.X);
+                }
+                Check(float.IsFinite(minX), "Ruler playhead is drawn");
+                return (minX + maxX) * 0.5f;
             }
             void Press(ImGuiKey key, bool hovered = true, bool textInput = false)
             {
@@ -370,51 +388,79 @@ internal static partial class Program
             Draw();
             float before = Scale();
             float anchor = (Scroll() + 400f) / before;
-            io.AddKeyEvent(ImGuiKey.ModShift, true);
-            io.AddMouseWheelEvent(0, 1);
-            Draw();
-            Draw();
-            Near(before * 1.25f, Scale(), "Shift wheel zooms in");
-            Near(anchor, (Scroll() + 400f) / Scale(), "Zoom preserves frame under mouse");
-            io.AddMouseWheelEvent(0, -1);
-            Draw();
-            Draw();
-            Near(before, Scale(), "Shift wheel zooms out");
-            io.AddKeyEvent(ImGuiKey.ModShift, false);
             io.AddKeyEvent(ImGuiKey.ModCtrl, true);
             io.AddMouseWheelEvent(0, 1);
             Draw();
             Draw();
-            Near(before * 1.25f, Scale(), "Existing Ctrl wheel zoom is preserved");
-            io.AddKeyEvent(ImGuiKey.ModCtrl, false);
+            Near(before * 1.25f, Scale(), "Ctrl wheel zooms in");
+            Near(anchor, (Scroll() + 400f) / Scale(), "Zoom preserves frame under mouse");
             io.AddMouseWheelEvent(0, -1);
             Draw();
             Draw();
-            Near(before * 1.25f, Scale(), "Plain wheel does not zoom");
+            Near(before, Scale(), "Ctrl wheel zooms out");
+            io.AddKeyEvent(ImGuiKey.ModCtrl, false);
+            float scrollBeforeShiftWheel = Scroll();
+            io.AddKeyEvent(ImGuiKey.ModShift, true);
+            io.AddMouseWheelEvent(0, -1);
+            Draw();
+            Draw();
+            Near(before, Scale(), "Shift wheel does not zoom");
+            Check(Scroll() > scrollBeforeShiftWheel, "Shift wheel pans the timeline horizontally");
+            io.AddKeyEvent(ImGuiKey.ModShift, false);
+            io.AddMouseWheelEvent(0, -1);
+            Draw();
+            Draw();
+            Near(before, Scale(), "Plain wheel does not zoom");
             io.AddKeyEvent(ImGuiKey.ModShift, true);
             io.AddMouseWheelEvent(0, 1);
             Draw(hovered: false);
-            Near(before * 1.25f, Scale(), "Wheel outside timeline does not zoom");
+            Near(before, Scale(), "Wheel outside timeline does not zoom");
             Draw();
             Draw();
+            io.AddKeyEvent(ImGuiKey.ModShift, false);
             io.AddMouseWheelEvent(0, 100);
+            io.AddKeyEvent(ImGuiKey.ModCtrl, true);
             Draw();
             Draw();
-            Near(40f, Scale(), "Shift wheel clamps to maximum zoom");
+            Near(40f, Scale(), "Ctrl wheel clamps to maximum zoom");
             float scrollAtLimit = Scroll();
             io.AddMouseWheelEvent(0, 1);
             Draw();
             Draw();
-            Near(scrollAtLimit, Scroll(), "Shift wheel at maximum zoom does not pan");
+            Near(scrollAtLimit, Scroll(), "Ctrl wheel at maximum zoom does not pan");
             io.AddMouseWheelEvent(0, -100);
             Draw();
             Draw();
-            Near(1f, Scale(), "Shift wheel clamps to minimum zoom");
+            Near(1f, Scale(), "Ctrl wheel clamps to minimum zoom");
             scrollAtLimit = Scroll();
             io.AddMouseWheelEvent(0, -1);
             Draw();
             Draw();
-            Near(scrollAtLimit, Scroll(), "Shift wheel at minimum zoom does not pan");
+            Near(scrollAtLimit, Scroll(), "Ctrl wheel at minimum zoom does not pan");
+            io.AddKeyEvent(ImGuiKey.ModCtrl, false);
+            io.AddKeyEvent(ImGuiKey.ModShift, false);
+
+            timeline.SetCurrentFrame(120);
+            typeof(Timeline).GetField("_pixelsPerFrame", flags)!.SetValue(timeline, 5f);
+            Draw();
+            float playheadAtStart = RulerPlayheadX();
+            typeof(Timeline).GetField("_pendingHScrollOffset", flags)!.SetValue(timeline, 400f);
+            Draw();
+            Draw();
+            Draw();
+            Near(400f, Scroll(), "Timeline horizontal scroll is applied to the track area");
+            Near(playheadAtStart - 400f, RulerPlayheadX(), "Ruler playhead follows horizontal track scrolling");
+
+            float leftColumnWidth = (float)typeof(Timeline).GetProperty("LeftColumnWidth",
+                BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+            float rulerY = (float)typeof(Timeline).GetField("_timelineAreaTop", flags)!.GetValue(timeline)!;
+            float rulerClickX = timeline.WindowPos.X + ImGui.GetStyle().WindowPadding.X + leftColumnWidth +
+                100 * Scale() - Scroll();
+            io.AddMouseButtonEvent((int)ImGuiMouseButton.Left, true);
+            Draw(mouseX: rulerClickX, mouseY: rulerY + 5f);
+            io.AddMouseButtonEvent((int)ImGuiMouseButton.Left, false);
+            Draw(mouseX: rulerClickX, mouseY: rulerY + 5f);
+            Equal(100, timeline.CurrentFrame, "Ruler click seeks to the scrolled frame");
         }
         finally
         {

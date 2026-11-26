@@ -114,6 +114,28 @@ public partial class SpawnMenu
                 mesh.Upload();
             }
             root.ApplyMaterialSettingsToMeshes();
+            if (data.Width > 1 || data.Height > 1 || data.Length > 1)
+            {
+                root.SchematicDimensions = new vec3(
+                    data.Width * (float)tileX, data.Height * (float)tileY, data.Length * (float)tileZ);
+            }
+            else
+            {
+                vec3 min = new(float.MaxValue), max = new(float.MinValue);
+                bool hasVertex = false;
+                foreach (var mesh in root.Visuals)
+                    foreach (var vertex in mesh.Vertices)
+                    {
+                        min = new vec3(Math.Min(min.x, vertex.x), Math.Min(min.y, vertex.y), Math.Min(min.z, vertex.z));
+                        max = new vec3(Math.Max(max.x, vertex.x), Math.Max(max.y, vertex.y), Math.Max(max.z, vertex.z));
+                        hasVertex = true;
+                    }
+                if (hasVertex)
+                {
+                    root.SchematicPlacementBoundsMin = min;
+                    root.SchematicPlacementBoundsMax = max;
+                }
+            }
             return root;
         }
         catch

@@ -111,6 +111,10 @@ public class ProjectRenderSettings
     public float NuxTExposure { get; set; } = 1f;
     public int NuxTSeed { get; set; } = 1;
     public bool NuxTDenoiserEnabled { get; set; }
+    public float NuxTVolumeStepSize { get; set; } = 0.25f;
+    public int NuxTVolumeMaxSteps { get; set; } = 96;
+    public int NuxTVolumeLightSamples { get; set; } = 4;
+    public bool NuxTVolumeShadows { get; set; } = true;
     public int MaxArrayInstances
     {
         get => _maxArrayInstances;

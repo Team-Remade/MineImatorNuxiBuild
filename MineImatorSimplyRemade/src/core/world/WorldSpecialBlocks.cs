@@ -311,7 +311,7 @@ internal static class WorldSpecialBlocks
             {
                 bool upper = (data & 8) != 0;
                 text = $"{name}[half={(upper ? "upper" : "lower")},hinge={((data & 1) != 0 ? "right" : "left")}," +
-                    $"facing={new[] { "west", "north", "east", "south" }[data & 3]},open={((data & 4) != 0 ? "true" : "false")}]";
+                    $"facing={new[] { "east", "south", "west", "north" }[data & 3]},open={((data & 4) != 0 ? "true" : "false")}]";
             }
         }
         else if (text.Contains(':') && !text.StartsWith("minecraft:", StringComparison.Ordinal)) return null;

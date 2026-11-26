@@ -32,7 +32,14 @@ internal static partial class Program
             var blocks = (List<string>)typeof(BlockRegistry).GetField("_blocks", statics)!.GetValue(null)!;
             var parse = typeof(BlockRegistry).GetMethod("ParseBlockstate", statics,
                 [typeof(string), typeof(JsonObject), typeof(string)])!;
-            foreach (string name in new[] { "stone_button", "oak_button", "oak_trapdoor", "iron_door", "oak_fence", "oak_log" })
+            foreach (string name in new[]
+                     {
+                         "stone_button", "oak_button", "oak_trapdoor", "oak_door", "iron_door", "spruce_door",
+                         "birch_door", "jungle_door", "acacia_door", "dark_oak_door", "oak_fence", "oak_log",
+                         "white_carpet", "orange_carpet", "magenta_carpet", "light_blue_carpet", "yellow_carpet",
+                         "lime_carpet", "pink_carpet", "gray_carpet", "light_gray_carpet", "cyan_carpet",
+                         "purple_carpet", "blue_carpet", "brown_carpet", "green_carpet", "red_carpet", "black_carpet"
+                     })
             {
                 var json = JsonNode.Parse(File.ReadAllText(Path.Combine(version, "blockstates", name + ".json")))!.AsObject();
                 parse.Invoke(null, [name, json, ""]);
@@ -234,6 +241,25 @@ internal static partial class Program
                 scenarios++;
             }
 
+            void CheckLegacyCarpetHeight()
+            {
+                var bounds = Activator.CreateInstance(boundsType, [0, 0, 0, 0, 0, 0])!;
+                var volume = Activator.CreateInstance(volumeType, [bounds])!;
+                volumeType.GetMethod("Set")!.Invoke(volume, [0, 0, 0, "legacy:171:14"]);
+                string path = fixture.NewPath(".schem");
+                volumeType.GetMethod("SaveSchematic")!.Invoke(volume, [path, null]);
+                var carpet = spawn.SpawnSchematicFromPath(path) ??
+                    throw new InvalidOperationException("Failed importing legacy red carpet");
+                try
+                {
+                    var vertices = Geometry(carpet).Select(vertex => vertex.Position).ToArray();
+                    Check(vertices.Length > 0, "Legacy carpet has rendered geometry");
+                    Near(0f, vertices.Min(vertex => vertex.y), "Legacy carpet bottom remains on the block floor");
+                    Near(1f / 16f, vertices.Max(vertex => vertex.y), "Legacy carpet uses its thin model height");
+                }
+                finally { DisposeObject(carpet); }
+            }
+
             foreach (string name in new[] { "stone_button", "oak_button" })
             foreach (string face in new[] { "wall", "floor", "ceiling" })
             foreach (string facing in new[] { "north", "south", "east", "west" })
@@ -262,6 +288,14 @@ internal static partial class Program
                         $"minecraft:iron_door[{properties},half=upper]");
                 }
             }
+
+            foreach (int id in new[] { 64, 71, 193, 194, 195, 196, 197 })
+            foreach (int facing in Enumerable.Range(0, 4))
+            foreach (bool open in new[] { false, true })
+            foreach (int hinge in Enumerable.Range(0, 2))
+                Scenario($"legacy:{id}:{facing | (open ? 4 : 0)}", $"legacy:{id}:{8 | hinge}");
+
+            CheckLegacyCarpetHeight();
 
             var multipart = typeof(BlockRegistry).GetMethod("GetMultipartVariants", statics)!;
             foreach (var (facing, y) in new[] { ("north", 0), ("east", 270), ("south", 180), ("west", 90) })

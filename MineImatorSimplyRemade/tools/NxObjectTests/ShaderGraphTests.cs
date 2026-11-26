@@ -272,7 +272,7 @@ internal static partial class Program
             Frame();
 
             // Every node kind draws on the canvas and in the inspector.
-            var kinds = Enum.GetValues<ShaderNodeKind>().Where(kind => kind != ShaderNodeKind.Output).ToArray();
+            var kinds = Enum.GetValues<ShaderNodeKind>().Where(kind => !ShaderGraph.IsOutput(kind)).ToArray();
             obj.MaterialSettings.CustomShader = new ShaderGraph
             {
                 Enabled = true,
@@ -287,6 +287,35 @@ internal static partial class Program
                 Frame();
             }
             Check(obj.MaterialSettings.CustomShader!.Nodes.Length == kinds.Length + 1, "Drawing every node kind leaves the graph unchanged");
+            Frame();
+
+            // The Fog Volume Output and a Path node draw too, and the editor can swap the output kind.
+            var fog = ShaderGraphPresets.CreateFogVolume();
+            fog = fog with
+            {
+                Nodes = fog.Nodes.Add(ShaderGraph.CreateNode(4, ShaderNodeKind.Path, 0, 300)),
+                Links = fog.Links.Add(new ShaderLink(4, 1, ShaderGraph.FogInput("Path Visibility")))
+            };
+            Equal<string?>(null, fog.ValidationError, "A fog volume graph with a Path node is valid");
+            obj.MaterialSettings.CustomShader = fog;
+            for (int id = 1; id <= fog.Nodes.Length; id++)
+            {
+                selected.SetValue(panel, id);
+                Frame();
+            }
+            Check(ReferenceEquals(fog, obj.MaterialSettings.CustomShader), "Drawing the fog output and Path node leaves the graph unchanged");
+
+            var replaceOutput = typeof(PropertiesPanel).GetMethod("ShaderReplaceOutput", instance)!;
+            var surface = (ShaderGraph)replaceOutput.Invoke(panel, [obj, fog, ShaderNodeKind.Output])!;
+            Check(ReferenceEquals(surface, obj.MaterialSettings.CustomShader) &&
+                  surface.Nodes.Single(node => ShaderGraph.IsOutput(node.Kind)).Kind == ShaderNodeKind.Output &&
+                  surface.Nodes.Length == fog.Nodes.Length && surface.Links.All(link => link.Target != 1) &&
+                  surface.ValidationError == null && !surface.Program.Volume,
+                "Swapping to the material output updates the scene object and drops links into the old output");
+            Frame();
+            var backToFog = (ShaderGraph)replaceOutput.Invoke(panel, [obj, surface, ShaderNodeKind.FogVolumeOutput])!;
+            Check(backToFog.Program.Volume && ReferenceEquals(backToFog, obj.MaterialSettings.CustomShader),
+                "Swapping to the fog volume output makes the graph a volume");
             Frame();
         }
         finally
@@ -419,7 +448,7 @@ internal static partial class Program
 
             var plain = new ShaderGraph { Enabled = true, Nodes = [ShaderGraph.CreateNode(1, ShaderNodeKind.Output, 0, 0)] };
             // Each node kind executes on the GPU, including every output socket.
-            foreach (var kind in Enum.GetValues<ShaderNodeKind>().Where(kind => kind != ShaderNodeKind.Output))
+            foreach (var kind in Enum.GetValues<ShaderNodeKind>().Where(kind => !ShaderGraph.IsOutput(kind)))
             {
                 for (int output = 0; output < ShaderGraph.OutputCount(kind); output++)
                 {

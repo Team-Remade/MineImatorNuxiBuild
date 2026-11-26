@@ -10,15 +10,27 @@ see [AGENTS.md](AGENTS.md).
 Open the renderer dropdown in the main viewport toolbar to switch between the
 default **OpenGL** renderer and **NuxT**, an experimental progressive path tracer.
 NuxT uses GPU compute when the main window has an OpenGL 4.3+ context and falls
-back to CPU tracing on older or unsupported hardware. Start directly in NuxT with
-`dotnet run --project .\MineImatorSimplyRemade\MineImatorSimplyRemade.csproj -- --renderer=nuxt`;
-OpenGL remains the default.
+back to CPU tracing on older or unsupported hardware. The same **Renderer** choice is
+at the top of **Properties > Render Settings**. It is saved with your app
+preferences rather than the project, so the renderer you pick is used for every
+project and every later session. Start directly in NuxT for one session with
+`dotnet run --project .\MineImatorSimplyRemade\MineImatorSimplyRemade.csproj -- --renderer=nuxt`
+(or force OpenGL with `--renderer=opengl`); without the flag the saved choice is used.
+OpenGL is the default for new installs.
 
 Open **Properties > Render Settings > NuxT Path Tracer** to adjust samples per
 pixel, maximum bounces, render scale, exposure, and the deterministic sampling
 seed. These controls are saved with the project. The viewport displays progress
 as samples accumulate; camera, scene, timeline, or setting changes restart the
 render. Lower the render scale or sample count for faster feedback.
+
+The **Fog Volumes** group in the same section sets the quality of volumetric fog:
+**Step size** (blocks between samples while marching through fog), **Max steps**
+(cap per pass through one volume; large volumes use bigger steps instead),
+**Light samples** (steps per pass that sample a light; 0 lights fog with ambient
+light only) and **Fog shadows** (fog dims the light that reaches surfaces and
+other fog). Smaller steps and more light samples are smoother but slower. These
+are saved with the project.
 
 Enable **Denoiser (Intel Open Image Denoise)** to filter the completed linear HDR
 image with OIDN's CPU RT filter. Intermediate progressive samples remain
@@ -46,9 +58,42 @@ animation exports wait for scene preparation and all configured samples, and
 render at the requested output dimensions rather than the interactive render
 scale, up to the renderer's 8,388,608-pixel and device texture limits.
 
-NuxT is still experimental: custom shader graphs and blended/translucent surface
-materials are not reproduced, and several material and post-processing details
-can differ from OpenGL. OpenGL remains the default renderer.
+### Custom shader graphs and fog volumes in NuxT
+
+When a material has an enabled custom shader graph, the GPU path tracer runs the
+same node graph at every hit. A **Principled Material Output** drives base color,
+roughness, metallic, emission (with strength), alpha, transmission with IOR
+refraction, and bump height (which perturbs the shading normal). Specular and
+Refraction Depth are viewport-only. Time, texture, procedural and coordinate nodes
+work, so animated graphs follow the timeline.
+
+To turn an object into a fog volume, open its shader graph and choose
+**Add > Output > Fog Volume Output** (this replaces the material output and drops its
+links) or use the **Fog Volume** starter graph. Use a closed mesh such as a cube or
+sphere; the volume fills its interior.
+
+- **Color** and **Extinction Color** set the scattered color and the tint of the
+  light that gets absorbed. **Density** is a percentage that can be driven by a
+  texture or any procedural node. **Scattering**, **Absorption** and **Anisotropy**
+  (negative scatters backwards, positive forwards) shape how light moves through it.
+- **Edge Softness** fades the fog near the surface it enters and leaves, and below
+  the top cutoff. **Emission Color** and **Emission Strength** make fog glow.
+- **Voxel Size** snaps density to a grid in the object's space (0 keeps it smooth),
+  **Voxel Size Randomness** merges neighboring voxels into larger ones, and
+  **Top Cutoff** removes everything above that percentage of the volume's height.
+- **Path Visibility** takes a **Path** node. Choose a Path object in the node, set
+  its **Radius**, **Falloff**, **Start** and **End**, and link its **Visibility**
+  output; the fog is only visible near that section of the path, so it can follow
+  an animated path. A graph can follow up to 4 different paths, and a path that is
+  missing from the scene leaves the whole volume visible.
+
+The OpenGL viewport can't ray march, so it only shows a translucent preview of a
+fog volume. Fog volumes and custom shader graphs are only traced on the GPU: the CPU
+fallback renders those materials with their standard settings and skips fog.
+
+NuxT is still experimental: blended/translucent surface materials are approximated
+and several material and post-processing details can differ from OpenGL. OpenGL
+remains the default renderer.
 
 ## Home screen splash artwork
 

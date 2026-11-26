@@ -247,6 +247,10 @@ public class SceneObject
     public int TileY = 1;
     public int TileZ = 1;
 
+    internal vec3? SchematicDimensions { get; set; }
+    internal vec3? SchematicPlacementBoundsMin { get; set; }
+    internal vec3? SchematicPlacementBoundsMax { get; set; }
+
     /// <summary>Scenery (schematic) option: randomize weighted block rotations per position.</summary>
     public bool SceneryRandomize;
 

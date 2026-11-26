@@ -71,6 +71,7 @@ public partial class Viewport : UiPanel
     }
 
     private Action<vec3>? _placeObject;
+    private Action<vec3, vec3>? _placeObjectOnSurface;
     private SceneObject? _placementExcludedRoot;
     private bool _consumePlacementClick;
     private int _placementReleaseFrame = -1;
@@ -79,6 +80,7 @@ public partial class Viewport : UiPanel
     {
         var owner = MainViewport ?? this;
         owner._placeObject = null;
+        owner._placeObjectOnSurface = null;
         owner._placementExcludedRoot = null;
     }
 
@@ -87,6 +89,16 @@ public partial class Viewport : UiPanel
         var owner = MainViewport ?? this;
         owner.CancelDepthOfFieldFocus();
         owner._placeObject = placeObject;
+        owner._placeObjectOnSurface = null;
+        owner._placementExcludedRoot = excludedRoot;
+    }
+
+    public void RequestObjectPlacementWithSurface(Action<vec3, vec3> placeObject, SceneObject? excludedRoot = null)
+    {
+        var owner = MainViewport ?? this;
+        owner.CancelDepthOfFieldFocus();
+        owner._placeObject = null;
+        owner._placeObjectOnSurface = placeObject;
         owner._placementExcludedRoot = excludedRoot;
     }
 
@@ -4701,7 +4713,8 @@ public partial class Viewport : UiPanel
         float screenX,
         float screenY,
         bool ctrlHeld,
-        Action<vec3>? placeAtSurface = null)
+        Action<vec3>? placeAtSurface = null,
+        Action<vec3, vec3>? placeOnSurface = null)
     {
         // Selection callbacks can edit raw public fields while handling a pick.
         using var uncached = SceneObject.SuspendRenderEvaluation();
@@ -4719,9 +4732,10 @@ public partial class Viewport : UiPanel
 
         Gl.UseProgram(_pickShader.ShaderProgram);
         vec3 previousCameraPosition = Mesh.GlobalCameraPosition;
-        if (placeAtSurface != null)
+        bool surfacePlacement = placeAtSurface != null || placeOnSurface != null;
+        if (surfacePlacement)
             Mesh.GlobalCameraPosition = (view.Inverse * new vec4(0f, 0f, 0f, 1f)).xyz;
-        RenderPickObjects(sceneObjects, view, proj, surfacesOnly: placeAtSurface != null);
+        RenderPickObjects(sceneObjects, view, proj, surfacesOnly: surfacePlacement);
         Mesh.GlobalCameraPosition = previousCameraPosition;
 
         // ── Read back the clicked pixel ───────────────────────────────────────
@@ -4746,13 +4760,10 @@ public partial class Viewport : UiPanel
         pixelX = Math.Clamp(pixelX, 0, (int)w - 1);
         pixelY = Math.Clamp(pixelY, 0, (int)h - 1);
 
-        if (placeAtSurface != null)
+        if (surfacePlacement)
         {
             float depth;
             Gl.ReadPixels(pixelX, pixelY, 1, 1, GLEnum.DepthComponent, GLEnum.Float, &depth);
-            Gl.Disable(GLEnum.DepthTest);
-            Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
-            Gl.BindTexture(GLEnum.Texture2D, 0);
 
             mat4 inverse = (proj * view).Inverse;
             float x = (pixelX + 0.5f) / w * 2f - 1f;
@@ -4760,6 +4771,9 @@ public partial class Viewport : UiPanel
             vec4 surfacePoint = inverse * new vec4(x, y, depth * 2f - 1f, 1f);
             bool hasSurface = depth < 1f && MathF.Abs(surfacePoint.w) > 1e-6f;
             vec3 position = hasSurface ? surfacePoint.xyz / surfacePoint.w : vec3.Zero;
+            vec3 normal = hasSurface
+                ? EstimatePickingSurfaceNormal(pixelX, pixelY, w, h, inverse, position)
+                : vec3.UnitY;
             vec4 near = inverse * new vec4(x, y, -1f, 1f);
             vec4 far = inverse * new vec4(x, y, 1f, 1f);
             vec3 origin = near.xyz / near.w;
@@ -4772,11 +4786,24 @@ public partial class Viewport : UiPanel
                     (MainViewport ?? this).GroundPlaneVisible && distance < (position - origin).Length))
                 {
                     position = origin + direction * distance;
+                    normal = vec3.UnitY;
                     hasSurface = true;
                 }
             }
-            if (hasSurface && float.IsFinite(position.x) && float.IsFinite(position.y) && float.IsFinite(position.z))
-                placeAtSurface(position);
+            bool validSurface = hasSurface && float.IsFinite(position.x) && float.IsFinite(position.y) &&
+                                float.IsFinite(position.z);
+            if (!float.IsFinite(normal.x) || !float.IsFinite(normal.y) || !float.IsFinite(normal.z))
+                normal = vec3.UnitY;
+            Gl.Disable(GLEnum.DepthTest);
+            Gl.BindFramebuffer(GLEnum.Framebuffer, 0);
+            Gl.BindTexture(GLEnum.Texture2D, 0);
+            if (validSurface)
+            {
+                if (placeOnSurface != null)
+                    placeOnSurface(position, normal);
+                else
+                    placeAtSurface?.Invoke(position);
+            }
             return;
         }
 
@@ -4822,6 +4849,43 @@ public partial class Viewport : UiPanel
         {
             sm.SelectOnly(hit);
         }
+    }
+
+    private unsafe vec3 EstimatePickingSurfaceNormal(int pixelX, int pixelY, uint width, uint height,
+        mat4 inverse, vec3 center)
+    {
+        bool TryRead(int x, int y, out vec3 position)
+        {
+            position = vec3.Zero;
+            if (x < 0 || y < 0 || x >= width || y >= height) return false;
+            float depth;
+            Gl.ReadPixels(x, y, 1, 1, GLEnum.DepthComponent, GLEnum.Float, &depth);
+            if (!float.IsFinite(depth) || depth >= 1f) return false;
+            float ndcX = (x + 0.5f) / width * 2f - 1f;
+            float ndcY = (y + 0.5f) / height * 2f - 1f;
+            vec4 world = inverse * new vec4(ndcX, ndcY, depth * 2f - 1f, 1f);
+            if (MathF.Abs(world.w) <= 1e-6f) return false;
+            position = world.xyz / world.w;
+            return float.IsFinite(position.x) && float.IsFinite(position.y) && float.IsFinite(position.z);
+        }
+
+        bool hasLeft = TryRead(pixelX - 1, pixelY, out vec3 left);
+        bool hasRight = TryRead(pixelX + 1, pixelY, out vec3 right);
+        bool hasDown = TryRead(pixelX, pixelY - 1, out vec3 down);
+        bool hasUp = TryRead(pixelX, pixelY + 1, out vec3 up);
+        if ((!hasLeft && !hasRight) || (!hasDown && !hasUp)) return vec3.UnitY;
+
+        vec3 horizontal = hasLeft && hasRight ? right - left : hasRight ? right - center : center - left;
+        vec3 vertical = hasDown && hasUp ? up - down : hasUp ? up - center : center - down;
+        vec3 normal = vec3.Cross(horizontal, vertical);
+        if (normal.LengthSqr < 1e-10f) return vec3.UnitY;
+
+        float absX = MathF.Abs(normal.x), absY = MathF.Abs(normal.y), absZ = MathF.Abs(normal.z);
+        return absX >= absY && absX >= absZ
+            ? new vec3(MathF.Sign(normal.x), 0, 0)
+            : absY >= absZ
+                ? new vec3(0, MathF.Sign(normal.y), 0)
+                : new vec3(0, 0, MathF.Sign(normal.z));
     }
 
     /// <summary>
@@ -6748,7 +6812,7 @@ public partial class Viewport : UiPanel
             return true;
         }
         if (owner._placementReleaseFrame == ImGui.GetFrameCount()) return true;
-        if (owner._placeObject == null) return false;
+        if (owner._placeObject == null && owner._placeObjectOnSurface == null) return false;
         if (ImGui.IsKeyPressed(ImGuiKey.Escape))
         {
             owner.CancelObjectPlacement();
@@ -6773,11 +6837,15 @@ public partial class Viewport : UiPanel
                 preview ? _previewPickColorTex : _pickColorTex, width, height,
                 prepared.GetViewMatrix(), prepared.GetProjectionMatrix((float)width / height),
                 owner.SceneObjects, imageMin, imageSize, ImGui.GetMousePos().X, ImGui.GetMousePos().Y, false,
-                position =>
+                placeOnSurface: (position, normal) =>
                 {
                     var place = owner._placeObject;
+                    var placeOnSurface = owner._placeObjectOnSurface;
                     owner.CancelObjectPlacement();
-                    place?.Invoke(position);
+                    if (placeOnSurface != null)
+                        placeOnSurface(position, normal);
+                    else
+                        place?.Invoke(position);
                 });
         }
         return true;

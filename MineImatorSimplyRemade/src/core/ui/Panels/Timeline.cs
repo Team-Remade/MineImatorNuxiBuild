@@ -734,7 +734,7 @@ public partial class Timeline : UiPanel
     private bool IsTimelineZoomScroll()
     {
         var io = ImGui.GetIO();
-        return !RetimingBlocksInput && IsWindowHovered && (io.KeyCtrl || io.KeyShift) &&
+        return !RetimingBlocksInput && IsWindowHovered && io.KeyCtrl &&
             MathF.Abs(io.MouseWheel) >= float.Epsilon;
     }
 
@@ -747,7 +747,7 @@ public partial class Timeline : UiPanel
         float timelineLeft = WindowPos.X + LeftColumnWidth;
         float mouseViewportX = Math.Clamp(io.MousePos.X - timelineLeft, 0f, Math.Max(0f, _trackViewportWidth));
         float anchorFrame = (_hScrollOffset + mouseViewportX) / _pixelsPerFrame;
-        // Override ImGui's Shift+wheel panning, including when zoom is already at a limit.
+        // Keep Ctrl+wheel from changing the track scroll position, even at a zoom limit.
         _pendingHScrollOffset = _hScrollOffset;
         ZoomTimeline(MathF.Pow(ZoomStep, io.MouseWheel), (anchorFrame, mouseViewportX));
     }
@@ -1366,13 +1366,12 @@ public partial class Timeline : UiPanel
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
         ImGui.BeginChild("##ruler", rulerSize, ImGuiChildFlags.None,
             ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
-        ImGui.SetScrollX(_hScrollOffset);
         ImGui.PopStyleVar();
 
         var   dl      = ImGui.GetWindowDrawList();
         var   wPos    = ImGui.GetWindowPos();
         var   wSize   = ImGui.GetWindowSize();
-        float scrollX = ImGui.GetScrollX();
+        float scrollX = _hScrollOffset;
         _timelineAreaTop = wPos.Y;
 
         dl.AddRectFilled(wPos, wPos + wSize,

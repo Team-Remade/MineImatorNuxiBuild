@@ -129,6 +129,36 @@ public partial class Viewport
             ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.9f)), $"NuxT  ·  {status}");
     }
 
+    /// <summary>
+    /// Whether this viewport renders with the NuxT path tracer. Choosing a renderer through <see cref="SetNuxTRenderer"/>
+    /// also saves it as an app preference, so it carries over to other projects and later sessions.
+    /// </summary>
+    public bool UseNuxTRenderer
+    {
+        get => _useNuxT;
+        set
+        {
+            if (_useNuxT == value)
+                return;
+            _useNuxT = value;
+            if (value)
+                _nuxtCaptureInputKey = int.MinValue;
+            else
+                StopNuxTRendering();
+        }
+    }
+
+    /// <summary>Switches renderer and saves the choice to the app preferences.</summary>
+    public void SetNuxTRenderer(bool enabled)
+    {
+        UseNuxTRenderer = enabled;
+        if ((MainViewport ?? this).PreferencesPanel is { } preferences && preferences.UseNuxTRenderer != enabled)
+        {
+            preferences.UseNuxTRenderer = enabled;
+            preferences.SavePreferences();
+        }
+    }
+
     private void DrawNuxTRendererSelector(float itemY)
     {
         ImGui.SameLine();
@@ -137,15 +167,9 @@ public partial class Viewport
         if (ImGui.BeginCombo("##vpRenderer", _useNuxT ? "NuxT" : "OpenGL"))
         {
             if (ImGui.Selectable("OpenGL", !_useNuxT))
-            {
-                _useNuxT = false;
-                StopNuxTRendering();
-            }
+                SetNuxTRenderer(false);
             if (ImGui.Selectable("NuxT", _useNuxT))
-            {
-                _useNuxT = true;
-                _nuxtCaptureInputKey = int.MinValue;
-            }
+                SetNuxTRenderer(true);
             ImGui.EndCombo();
         }
 
@@ -189,7 +213,11 @@ public partial class Viewport
         var settings = new NuxTSettings(renderSettings?.NuxTSamples ?? 32,
             renderSettings?.NuxTMaxBounces ?? 4, renderSettings?.NuxTResolutionScale ?? 0.5f,
             renderSettings?.NuxTExposure ?? 1f, renderSettings?.NuxTSeed ?? 1,
-            renderSettings?.NuxTDenoiserEnabled ?? false).Normalized();
+            renderSettings?.NuxTDenoiserEnabled ?? false,
+            renderSettings?.NuxTVolumeStepSize ?? NuxTSettings.DefaultVolumeStepSize,
+            renderSettings?.NuxTVolumeMaxSteps ?? NuxTSettings.DefaultVolumeMaxSteps,
+            renderSettings?.NuxTVolumeLightSamples ?? NuxTSettings.DefaultVolumeLightSamples,
+            renderSettings?.NuxTVolumeShadows ?? true).Normalized();
         if (finalOutput)
             settings = settings with { ResolutionScale = 1f };
         int renderWidth = Math.Max(1, (int)MathF.Round(width * settings.ResolutionScale));
@@ -626,6 +654,7 @@ public partial class Viewport
                     job.Hash.Add(mesh.Indices?.Length ?? 0);
                     mesh.AddBendStateHash(ref job.Hash);
                     AddNuxTMaterialHash(ref job.Hash, mesh);
+                    AddNuxTGraphHash(ref job.Hash, owner, mesh);
                     if (job.VerificationOnly || mesh.PickOnly || mesh.DepthTestDisabled ||
                         mesh.Vertices.Count < 3 || mesh.Alpha <= 0f)
                         continue;
@@ -637,6 +666,46 @@ public partial class Viewport
             for (int child = obj.Children.Count - 1; child >= 0; child--)
                 job.PendingObjects.Push((obj.Children[child], root));
         }
+    }
+
+    // A custom shader changes when its graph is replaced; the paths it follows change with the path objects.
+    private static void AddNuxTGraphHash(ref HashCode hash, Viewport owner, Mesh mesh)
+    {
+        if (mesh.CustomShader is not { Enabled: true } graph)
+            return;
+        hash.Add(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(graph));
+        if (graph.Program is not { Error: null } program)
+            return;
+        foreach (string target in program.PathTargets)
+            if (ResolveNuxTPath(owner, target) is { } points)
+                foreach (Vector3 point in points)
+                    hash.Add(point);
+    }
+
+    private static PathSceneObject? FindNuxTPath(IEnumerable<SceneObject> objects, string id)
+    {
+        foreach (SceneObject obj in objects)
+        {
+            if (obj is PathSceneObject path && path.ObjectId == id)
+                return path;
+            if (FindNuxTPath(obj.Children, id) is { } found)
+                return found;
+        }
+        return null;
+    }
+
+    /// <summary>World-space points of a path object, or null when it is missing from the scene.</summary>
+    private static IReadOnlyList<Vector3>? ResolveNuxTPath(Viewport owner, string id)
+    {
+        if (FindNuxTPath(owner.SceneObjects, id) is not { } path || path.Samples.Count == 0)
+            return null;
+        mat4 world = path.GetWorldMatrixNoPivot();
+        var points = new List<Vector3>(path.Samples.Count + 1);
+        foreach (PathSample sample in path.Samples)
+            points.Add(ToNumerics((world * new vec4(sample.Position, 1f)).xyz));
+        if (path.Settings.Closed && points.Count > 1)
+            points.Add(points[0]);
+        return points;
     }
 
     private static void AddNuxTMaterialHash(ref HashCode hash, Mesh mesh, bool includeTextureOffset = true)
@@ -750,7 +819,7 @@ public partial class Viewport
                 {
                     if (mesh.IsSkinned && instance.Root is { } root)
                         UpdateBoneMatrices(mesh, instance.Source, BuildBoneDictionary(root));
-                    NuxTMaterial material = CreateNuxTMaterial(instance);
+                    NuxTMaterial material = CreateNuxTMaterial(owner, instance);
                     long geometrySignature = cacheGeometry ? GetNuxTGeometrySignature(mesh, job) : 0;
                     if (cacheGeometry && _nuxtStaticGeometry.TryGetValue(mesh, out NuxTGeometrySnapshot? snapshot) &&
                         snapshot.Signature == geometrySignature)
@@ -941,9 +1010,13 @@ public partial class Viewport
         _nuxtSceneBuilder?.PruneGeometryCache(activeMeshes.Cast<object>().ToHashSet(ReferenceEqualityComparer.Instance));
     }
 
-    private NuxTMaterial CreateNuxTMaterial(NuxTMeshInstance instance)
+    private NuxTMaterial CreateNuxTMaterial(Viewport owner, NuxTMeshInstance instance)
     {
         Mesh mesh = instance.Mesh;
+        NuxTShaderGraph? shaderGraph = mesh.CustomShader is { Enabled: true } custom
+            ? NuxTShaderGraph.Create(custom, ToNumerics(mesh.BoundsMin), ToNumerics(mesh.BoundsMax - mesh.BoundsMin),
+                (float)Mesh.EffectTime, Mesh.EffectFrame, id => ResolveNuxTPath(owner, id))
+            : null;
         NuxTTexture? albedoTexture = ReadNuxTTexture(mesh.TextureId);
         NuxTTexture? emissionTexture = mesh.EmissionEnabled
             ? ReadNuxTTexture(mesh.EmissionTexture != 0 ? mesh.EmissionTexture : mesh.TextureId)
@@ -985,7 +1058,8 @@ public partial class Viewport
             ToNumerics(colorAdjustments.AddHsv),
             ToNumerics(colorAdjustments.SubtractRgb),
             ToNumerics(colorAdjustments.SubtractHsv),
-            !colorAdjustments.IsNeutral);
+            !colorAdjustments.IsNeutral,
+            shaderGraph);
     }
 
     private unsafe NuxTTexture? ReadNuxTTexture(uint textureId)

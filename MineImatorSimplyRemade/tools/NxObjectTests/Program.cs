@@ -533,6 +533,7 @@ internal static partial class Program
             ("Backup interval boundaries, deferred capture, disable and project switching", BackupScheduling),
             ("Backup retention, changed limits and project isolation", BackupRetention),
             ("Backup failed capture/write preserves saves, rotation and retry interval", BackupFailures),
+            ("Schematic placement, legacy carpets and door metadata", SchematicPlacementRegression),
             ("Camera spawn local properties and view transforms without cursor placement", CameraSpawnTransforms),
             ("Camera orbit defaults, transforms, look-at, poles and parented navigation", CameraOrbitTransforms),
             ("Camera orbit project/archive/library, duplication, undo and dirty detection", CameraOrbitPersistence),
@@ -547,6 +548,7 @@ internal static partial class Program
             ("Enchantment glint MI resource mapping, persistence, packaging, inheritance and duplication", EnchantmentGlintPersistence),
             ("Material color operations persistence, inheritance, undo and timeline", MaterialColorPersistence),
             ("Shader graph links, persistence and duplication", ShaderGraphPersistence),
+            ("Shader graph fog volume output, path node, output swapping and persistence", ShaderGraphFogVolume),
             ("Shader graph canvas socket interactions", ShaderGraphControls),
             ("Shader graph editor keyboard shortcuts edit nodes, not scene objects", ShaderGraphShortcuts),
             ("Material color operations controls, keyframe menus and multi-selection", MaterialColorControls),
@@ -780,6 +782,8 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Snap ", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--camera-spawn", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Camera spawn", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--schematic-placement", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Schematic placement", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--camera-orbit", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("Camera orbit", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--camera-blades", StringComparer.Ordinal))

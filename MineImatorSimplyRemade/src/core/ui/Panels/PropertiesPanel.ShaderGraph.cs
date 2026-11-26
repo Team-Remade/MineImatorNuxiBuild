@@ -3,6 +3,7 @@ using Hexa.NET.ImGui;
 using MineImatorSimplyRemade.core.mdl.material;
 using MineImatorSimplyRemade.core.project;
 using MineImatorSimplyRemadeNuxi.core.objs;
+using MineImatorSimplyRemadeNuxi.core.objs.sceneObjects;
 
 namespace MineImatorSimplyRemade.core.ui.Panels;
 
@@ -24,7 +25,7 @@ public partial class PropertiesPanel
     /// <summary>True while the shader editor window owns keyboard edit shortcuts.</summary>
     public bool ShaderEditorHasFocus => _shaderEditorOpen && _shaderEditorFocused && _shaderEditorObject != null;
     public bool CanCopyShaderNode => TryGetShaderEditorGraph(out _, out var graph) &&
-        graph.Nodes.Any(n => n.Id == _shaderSelected && n.Kind != ShaderNodeKind.Output);
+        graph.Nodes.Any(n => n.Id == _shaderSelected && !ShaderGraph.IsOutput(n.Kind));
     public bool CanPasteShaderNode => _shaderClipboard != null && TryGetShaderEditorGraph(out _, out _);
 
     private static void SetShaderGraph(SceneObject obj, ShaderGraph graph)
@@ -132,7 +133,7 @@ public partial class PropertiesPanel
     private ShaderGraph ShaderRemoveNode(SceneObject obj, ShaderGraph graph, int id)
     {
         var node = graph.Nodes.FirstOrDefault(n => n.Id == id);
-        if (node == null || node.Kind == ShaderNodeKind.Output) return graph;
+        if (node == null || ShaderGraph.IsOutput(node.Kind)) return graph;
         graph = graph with
         {
             Nodes = graph.Nodes.Remove(node),
@@ -149,14 +150,14 @@ public partial class PropertiesPanel
     private ShaderGraph ShaderDuplicateNode(SceneObject obj, ShaderGraph graph, int id)
     {
         var node = graph.Nodes.FirstOrDefault(n => n.Id == id);
-        if (node == null || node.Kind == ShaderNodeKind.Output) return graph;
+        if (node == null || ShaderGraph.IsOutput(node.Kind)) return graph;
         return ShaderAddNode(obj, graph, node with { Id = NextShaderNodeId(graph), X = node.X + 24, Y = node.Y + 24 });
     }
 
     private bool ShaderCopyNode(ShaderGraph graph, int id)
     {
         var node = graph.Nodes.FirstOrDefault(n => n.Id == id);
-        if (node == null || node.Kind == ShaderNodeKind.Output) return false;
+        if (node == null || ShaderGraph.IsOutput(node.Kind)) return false;
         _shaderClipboard = node;
         return true;
     }
@@ -170,6 +171,40 @@ public partial class PropertiesPanel
         graph = graph with { Links = graph.Links.RemoveAll(link => link.Target == id || link.Source == id) };
         SetShaderGraph(obj, graph);
         return graph;
+    }
+
+    /// <summary>Swaps the output node for another kind; links into the old output are dropped.</summary>
+    private ShaderGraph ShaderReplaceOutput(SceneObject obj, ShaderGraph graph, ShaderNodeKind kind)
+    {
+        var candidate = ShaderGraph.WithOutputKind(graph, kind);
+        if (candidate.ValidationError != null)
+        {
+            _shaderError = candidate.ValidationError;
+            return graph;
+        }
+        SetShaderGraph(obj, candidate);
+        _shaderSelected = candidate.Nodes.First(node => ShaderGraph.IsOutput(node.Kind)).Id;
+        _shaderError = null;
+        return candidate;
+    }
+
+    private IEnumerable<PathSceneObject> ShaderPathObjects()
+    {
+        static IEnumerable<PathSceneObject> Walk(IEnumerable<SceneObject> objects)
+        {
+            foreach (var obj in objects)
+            {
+                if (obj is PathSceneObject path) yield return path;
+                foreach (var nested in Walk(obj.Children)) yield return nested;
+            }
+        }
+        return Viewport == null ? [] : Walk(Viewport.SceneObjects);
+    }
+
+    private string ShaderPathLabel(string? target)
+    {
+        if (string.IsNullOrEmpty(target)) return "None";
+        return ShaderPathObjects().FirstOrDefault(path => path.ObjectId == target)?.Name ?? "Missing";
     }
 
     private ShaderGraph ShaderReplaceNode(SceneObject obj, ShaderGraph graph, ShaderNode node, ShaderNode replacement)
@@ -216,10 +251,10 @@ public partial class PropertiesPanel
         var spec = ShaderGraph.Spec(kind);
         int rows = (spec.Mode != null ? 1 : 0) + (spec.Option != null ? 1 : 0) + (spec.Variant != null ? 1 : 0) +
                    (spec.ClampLabel != null ? 1 : 0) + spec.Parameters.Length;
-        return rows + (kind is ShaderNodeKind.Color or ShaderNodeKind.Ramp ? 1 : 0);
+        return rows + (kind is ShaderNodeKind.Color or ShaderNodeKind.Ramp or ShaderNodeKind.Path ? 1 : 0);
     }
 
-    private static float ShaderNodeWidth(ShaderNodeKind kind) => kind == ShaderNodeKind.Output ? 240 : 200;
+    private static float ShaderNodeWidth(ShaderNodeKind kind) => ShaderGraph.IsOutput(kind) ? 240 : 200;
 
     private static float ShaderNodeHeight(ShaderNodeKind kind) => ShaderRowStart + ShaderFooter + ShaderRowHeight *
         (ShaderOutputRows(kind) + ShaderSettingRows(kind) + ShaderGraph.InputCount(kind));
@@ -349,6 +384,12 @@ public partial class PropertiesPanel
                 SetShaderGraph(obj, graph);
                 ResetShaderCanvas();
             }
+            if (ImGui.MenuItem(Localization.DisplayText("Fog Volume")))
+            {
+                graph = ShaderGraphPresets.CreateFogVolume() with { Enabled = graph.Enabled };
+                SetShaderGraph(obj, graph);
+                ResetShaderCanvas();
+            }
             ImGui.EndPopup();
         }
 
@@ -402,9 +443,16 @@ public partial class PropertiesPanel
             ImGui.CloseCurrentPopup();
             return ShaderAddNode(obj, graph, ShaderGraph.CreateNode(NextShaderNodeId(graph), kind, at.X, at.Y));
         }
+        // A graph has exactly one output, so choosing an output kind swaps it instead of adding a node.
+        ShaderGraph AddOrReplace(ShaderNodeKind kind)
+        {
+            if (!ShaderGraph.IsOutput(kind)) return Add(kind);
+            ImGui.CloseCurrentPopup();
+            return ShaderReplaceOutput(obj, graph, kind);
+        }
         if (search.Length > 0)
         {
-            var matches = ShaderGraph.Categories.SelectMany(ShaderGraph.MenuKinds)
+            var matches = ShaderGraph.Categories.SelectMany(ShaderGraph.MenuKinds).Concat(ShaderGraph.OutputKinds)
                 .Where(kind => ShaderGraph.Label(kind).Contains(search, StringComparison.OrdinalIgnoreCase) ||
                                Localization.DisplayText(ShaderGraph.Label(kind)).Contains(search, StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -412,9 +460,10 @@ public partial class PropertiesPanel
             bool enter = ImGui.IsKeyPressed(ImGuiKey.Enter) || ImGui.IsKeyPressed(ImGuiKey.KeypadEnter);
             for (int i = 0; i < matches.Count; i++)
             {
-                if (ImGui.MenuItem(Localization.DisplayText(ShaderGraph.Label(matches[i])), ShaderGraph.Spec(matches[i]).Category, false, !full) ||
-                    (i == 0 && enter && !full))
-                    graph = Add(matches[i]);
+                bool allowed = !full || ShaderGraph.IsOutput(matches[i]);
+                if (ImGui.MenuItem(Localization.DisplayText(ShaderGraph.Label(matches[i])), ShaderGraph.Spec(matches[i]).Category, false, allowed) ||
+                    (i == 0 && enter && allowed))
+                    graph = AddOrReplace(matches[i]);
             }
             return graph;
         }
@@ -426,6 +475,17 @@ public partial class PropertiesPanel
                 if (ImGui.MenuItem(Localization.DisplayText(ShaderGraph.Label(kind))))
                     graph = Add(kind);
             }
+            ImGui.EndMenu();
+        }
+        if (ImGui.BeginMenu(Localization.DisplayText("Output")))
+        {
+            foreach (var kind in ShaderGraph.OutputKinds)
+            {
+                bool current = graph.Nodes.Any(node => node.Kind == kind);
+                if (ImGui.MenuItem(Localization.DisplayText(ShaderGraph.Label(kind)), "", current, !current))
+                    graph = AddOrReplace(kind);
+            }
+            UiText.Disabled(Localization.DisplayText("Replaces the current output and its links."));
             ImGui.EndMenu();
         }
         return graph;
@@ -636,7 +696,9 @@ public partial class PropertiesPanel
             if (spec.Variant != null) Setting(spec.Variant.Label, ShaderChoiceText(spec.Variant, n.Variant));
             if (spec.ClampLabel != null) Setting(spec.ClampLabel, n.Clamp ? "On" : "Off");
             float[] parameters = [n.A, n.B, n.C, n.D];
-            for (int p = 0; p < spec.Parameters.Length; p++) Setting(spec.Parameters[p].Name, $"{parameters[p]:0.###}");
+            for (int p = 0; p < spec.Parameters.Length; p++)
+                Setting(spec.Parameters[p].Name, spec.Parameters[p].Percent ? $"{parameters[p] * 100:0.#}%" : $"{parameters[p]:0.###}");
+            if (n.Kind == ShaderNodeKind.Path) Setting("Path", ShaderPathLabel(n.Target));
             if (n.Kind == ShaderNodeKind.Color)
             {
                 var (min, max) = Field(row++);
@@ -665,7 +727,8 @@ public partial class PropertiesPanel
                 }
                 else
                 {
-                    string value = inputs[i].Type == ShaderSocketType.Vector ? $"{x:0.##}, {vy:0.##}, {z:0.##}" : $"{x:0.###}";
+                    string value = inputs[i].Type == ShaderSocketType.Vector ? $"{x:0.##}, {vy:0.##}, {z:0.##}"
+                        : inputs[i].Percent ? $"{x * 100:0.#}%" : $"{x:0.###}";
                     Text(new Vector2(right - TextWidth(value), y), ShaderRgb(205, 205, 210), value);
                 }
             }
@@ -833,7 +896,7 @@ public partial class PropertiesPanel
             if (node == null) ImGui.CloseCurrentPopup();
             else
             {
-                bool editable = node.Kind != ShaderNodeKind.Output;
+                bool editable = !ShaderGraph.IsOutput(node.Kind);
                 UiText.Disabled(Localization.DisplayText(ShaderGraph.Label(node.Kind)));
                 ImGui.Separator();
                 if (ImGui.MenuItem(Localization.DisplayText("Duplicate"), Keybinds.Label("duplicate"), false,
@@ -960,11 +1023,42 @@ public partial class PropertiesPanel
                 var parameter = spec.Parameters[p];
                 float speed = Math.Max(0.005f, (parameter.Max - parameter.Min) / 400f);
                 if (node.Kind == ShaderNodeKind.Value) speed = 0.01f;
-                changedParameters |= Parameter(parameter.Name, ref values[p], parameter.Min, parameter.Max, speed);
+                if (parameter.Percent)
+                {
+                    float percent = values[p] * 100f;
+                    UiText.Disabled(Localization.DisplayText(parameter.Name));
+                    if (ImGui.DragFloat("##" + parameter.Name, ref percent, 0.25f, parameter.Min * 100f, parameter.Max * 100f,
+                            "%.1f%%", ImGuiSliderFlags.AlwaysClamp))
+                    {
+                        values[p] = percent / 100f;
+                        changedParameters = true;
+                    }
+                }
+                else
+                    changedParameters |= Parameter(parameter.Name, ref values[p], parameter.Min, parameter.Max, speed);
             }
             (a, b, c, d) = (values[0], values[1], values[2], values[3]);
         }
         if (changedParameters) (edited, changedNode) = (edited with { A = a, B = b, C = c, D = d }, true);
+        if (node.Kind == ShaderNodeKind.Path)
+        {
+            UiText.Disabled(Localization.DisplayText("Path"));
+            var paths = ShaderPathObjects().ToList();
+            if (ImGui.BeginCombo("##shaderPath", Localization.DisplayText(ShaderPathLabel(node.Target))))
+            {
+                if (ImGui.Selectable(Localization.DisplayText("None"), string.IsNullOrEmpty(node.Target)))
+                    (edited, changedNode) = (edited with { Target = null }, true);
+                foreach (var path in paths)
+                {
+                    if (ImGui.Selectable(path.Name + "##" + path.ObjectId, path.ObjectId == node.Target))
+                        (edited, changedNode) = (edited with { Target = path.ObjectId }, true);
+                }
+                ImGui.EndCombo();
+            }
+            UiText.Disabled(Localization.DisplayText(paths.Count == 0
+                ? "Spawn a Path object to follow it. Without one the whole volume stays visible."
+                : "Visibility is 100% within Radius of the path between Start and End, fading over Falloff."));
+        }
         if (spec.Mode == null && spec.Option == null && spec.Variant == null && spec.ClampLabel == null &&
             spec.Parameters.Length == 0 && node.Kind != ShaderNodeKind.Color && spec.Inputs.Length == 0)
             UiText.Disabled(Localization.DisplayText(node.Kind == ShaderNodeKind.Time
@@ -1022,6 +1116,14 @@ public partial class PropertiesPanel
                         changed = ImGui.DragFloat3("##value", ref vector, 0.01f, socket.Min, socket.Max, "%.3f");
                         (x, y, z) = (vector.X, vector.Y, vector.Z);
                     }
+                    else if (socket.Percent)
+                    {
+                        float percent = x * 100f;
+                        changed = ImGui.DragFloat("##value", ref percent, 0.25f, socket.Min * 100f, socket.Max * 100f, "%.1f%%",
+                            ImGuiSliderFlags.AlwaysClamp);
+                        x = percent / 100f;
+                        (y, z) = (x, x);
+                    }
                     else
                     {
                         float range = socket.Max - socket.Min;
@@ -1043,11 +1145,12 @@ public partial class PropertiesPanel
             SetShaderGraph(obj, graph);
         }
 
-        if (node.Kind == ShaderNodeKind.Output)
+        if (ShaderGraph.IsOutput(node.Kind))
         {
             ImGui.Spacing();
-            ImGui.TextWrapped(Localization.DisplayText(
-                "Transmission refracts the scene behind the surface using IOR and Refraction Depth; Alpha fades it out. Both draw in the transparent pass."));
+            ImGui.TextWrapped(Localization.DisplayText(node.Kind == ShaderNodeKind.FogVolumeOutput
+                ? "Turns the object into a fog volume; use a closed shape. The NuxT path tracer marches rays through it with voxel-snapped density. The viewport only shows a translucent preview. Voxel size 0 gives smooth fog; Top Cutoff trims the volume at a fraction of its height."
+                : "Transmission refracts the scene behind the surface using IOR and Refraction Depth; Alpha fades it out. Both draw in the transparent pass."));
             return graph;
         }
         ImGui.Spacing();

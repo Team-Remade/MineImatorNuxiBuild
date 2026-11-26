@@ -8,15 +8,30 @@ public readonly record struct NuxTSettings(
     float ResolutionScale = 0.5f,
     float Exposure = 1f,
     int Seed = 1,
-    bool DenoiserEnabled = false)
+    bool DenoiserEnabled = false,
+    float VolumeStepSize = 0.25f,
+    int VolumeMaxSteps = 96,
+    int VolumeLightSamples = 4,
+    bool VolumeShadows = true)
 {
+    public const float DefaultVolumeStepSize = 0.25f;
+    public const int DefaultVolumeMaxSteps = 96, DefaultVolumeLightSamples = 4;
+
+    /// <summary>
+    /// Fog volume quality: the ray-marching step in blocks, the step cap for one pass through a volume, how many
+    /// of those steps sample a light, and whether fog attenuates light on its way to surfaces and other fog.
+    /// </summary>
     public NuxTSettings Normalized() => new(
         Math.Clamp(Samples, 1, 4096),
         Math.Clamp(MaxBounces, 0, 16),
         Math.Clamp(float.IsFinite(ResolutionScale) ? ResolutionScale : 0.5f, 0.1f, 1f),
         Math.Clamp(float.IsFinite(Exposure) ? Exposure : 1f, 0.05f, 16f),
         Seed,
-        DenoiserEnabled);
+        DenoiserEnabled,
+        Math.Clamp(float.IsFinite(VolumeStepSize) ? VolumeStepSize : DefaultVolumeStepSize, 0.02f, 2f),
+        Math.Clamp(VolumeMaxSteps, 8, 512),
+        Math.Clamp(VolumeLightSamples, 0, 32),
+        VolumeShadows);
 }
 
 public sealed class NuxTTexture(byte[] pixels, int width, int height)
@@ -66,8 +81,12 @@ public readonly record struct NuxTMaterial(
     Vector3 AddHsv = default,
     Vector3 SubtractRgb = default,
     Vector3 SubtractHsv = default,
-    bool HasColorAdjustments = false)
+    bool HasColorAdjustments = false,
+    NuxTShaderGraph? ShaderGraph = null)
 {
+    /// <summary>The mesh is a fog volume; only the GPU tracer renders its medium.</summary>
+    public bool IsFogVolume => ShaderGraph is { IsVolume: true };
+
     public Vector2 TransformUv(Vector2 uv)
     {
         Vector2 repeat = TextureRepeat == default ? Vector2.One : TextureRepeat;
@@ -626,7 +645,7 @@ public sealed class NuxTScene
                          hit.Triangle.UvB * hit.Barycentric.Y +
                          hit.Triangle.UvC * hit.Barycentric.Z;
             Vector4 surface = material.SampleAlbedo(uv);
-            if (material.AlphaClip && surface.W < material.AlphaClipThreshold ||
+            if (material.IsFogVolume || material.AlphaClip && surface.W < material.AlphaClipThreshold ||
                 !material.AlphaClip && surface.W < 1f && random.NextFloat() > surface.W)
             {
                 if (++transparentLayers > 32)
@@ -750,9 +769,9 @@ public sealed class NuxTScene
                          hit.Triangle.UvB * hit.Barycentric.Y +
                          hit.Triangle.UvC * hit.Barycentric.Z;
             float alpha = material.SampleAlbedo(uv).W;
-            bool transparent = material.AlphaClip
+            bool transparent = material.IsFogVolume || (material.AlphaClip
                 ? alpha < material.AlphaClipThreshold
-                : alpha <= 0f || alpha < 1f && random.NextFloat() > alpha;
+                : alpha <= 0f || alpha < 1f && random.NextFloat() > alpha);
             if (!transparent)
                 return true;
             ray = ray with { Origin = hit.Position + ray.Direction * RayEpsilon };

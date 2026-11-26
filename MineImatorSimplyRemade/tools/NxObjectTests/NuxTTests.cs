@@ -21,6 +21,7 @@ internal static partial class Program
                    normalized.ResolutionScale == 0.5f && normalized.Exposure == 1f && normalized.Seed == 7 &&
                    normalized.DenoiserEnabled,
             "NuxT settings must clamp invalid and out-of-range values.");
+        NuxTVolumeSettingsChecks();
 
         var animatedTexture = new NuxTTexture([255, 0, 0, 255, 0, 0, 255, 255], 1, 2);
         var firstAnimatedFrame = new NuxTMaterial(Vector3.One, Vector3.Zero, AlbedoTexture: animatedTexture,
@@ -1011,6 +1012,8 @@ internal static partial class Program
                     rawGpuCoverage[pixel * 4 + 3] == denoisedGpuCoverage[pixel * 4 + 3]) &&
                        gl.GetError() == Silk.NET.OpenGL.GLEnum.NoError,
                 "GPU denoising must preserve primary-ray coverage and leave OpenGL error-free.");
+
+            NuxTShaderGraphGraphics(gl);
 
             byte[] ReadGpuOutput(uint outputTexture, int renderWidth, int renderHeight)
             {

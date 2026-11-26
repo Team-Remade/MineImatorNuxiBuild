@@ -177,20 +177,60 @@ Coverage and prerequisites:
   clearing, coupled fluid bakes and persistence.
 - `--nuxt`: no GPU; NuxT path-tracer environment, intersections, albedo/alpha-mask
   cutouts, emission, diffuse bounces, ambient/directional/point lighting and
-  shadows, deterministic samples, settings validation, and progressive cancellation/reset.
+  shadows, deterministic samples, settings validation, fog quality settings and
+  their project round trip, the app-level renderer preference format, and
+  progressive cancellation/reset.
 - `--nuxt-graphics`: OpenGL 4.3; compute shader compilation and dispatch, textured
   scene pixels against the CPU reference, progressive accumulation, camera/scene
   resets, empty-scene environment output, and a 200,000-triangle scene whose old
-  expanded triangle buffer exceeded 64 MiB. `--nuxt-project "path\to\project.nxProj"`
+  expanded triangle buffer exceeded 64 MiB. It also traces custom shader graph
+  surfaces and fog volumes (glow, absorption/tint, ambient and point-light scattering,
+  anisotropy, top cutoff, voxel snapping, Path node windows and fog shadows) and
+  compares real radiance values (`NuxTShaderGraphTests.cs`).
+  `--nuxt-project "path\to\project.nxProj"`
   restores a supplied project read-only, prepares its NuxT scene and reports one
   GPU sample or a device-limit fallback; run it with the harness output directed
   to the application bin folder so bundled data assets resolve.
 - `--shader-graph`: custom shader graph validation, socket values, multi-output
   links, legacy graph upgrades, persistence, canvas/inspector controls for every
-  node kind, and editor shortcuts.
+  node kind, editor shortcuts, and the Fog Volume Output, Path node, output
+  swapping and tracer-side path resolution.
 - `--shader-graph-graphics`: OpenGL 3.3; preset pixels, every node kind and
   output on the GPU, Alpha, Time-driven animation, and screen-space transmission
   and IOR refraction. Pass a PNG path after the selector to write a contact sheet.
+
+NuxT shader graphs and fog volumes:
+
+- `nuxt.comp` defines `GRAPH_COMPUTE` and includes `shader_graph.glsl`, so the viewport
+  and the path tracer run one interpreter. In compute mode each graph program is one
+  row of the `uShaderGraphData` texture (binding 15) and the per-hit state (graph row,
+  bounds, frame, path slots, `uModel`) is set by `BindGraph`. Path polylines follow the
+  program rows in the same texture, resampled to `NuxTShaderGraph.PathSamples` points
+  by arc length. Material texels are `MaterialStride` (15): the 11 surface texels, then
+  graph info, bounds minimum and frame, bounds size and the four path rows.
+- `NuxTMaterial.ShaderGraph` is a `NuxTShaderGraph`: the compiled program plus bounds,
+  time and resolved path points. It compares by content so unchanged scenes keep
+  their fingerprint. `Viewport.NuxT.cs` hashes graph identity and followed path points
+  in the capture hash, because path edits change no mesh geometry.
+- A fog volume is a closed mesh whose graph ends in `FogVolumeOutput`. `Trace` enters
+  it on a front-facing hit, ray marches to the next hit on the same instance, and
+  treats a back-facing first hit as starting inside. Fog never blocks light itself:
+  shadow rays go through `ShadowTransmittance`, which integrates fog with a few
+  samples (and is skipped when the Fog shadows setting is off). Voxel size, randomness
+  and Top Cutoff are plain node settings because the sample position is snapped to the
+  voxel grid before the graph runs. A graph's Path slot is its index in
+  `ShaderGraphProgram.PathTargets`, which follows graph evaluation order, not node ids.
+  `MaxPaths` bounds the distinct paths so slots fit one texel.
+- The CPU tracer ignores graphs and treats fog volumes as invisible; only the GPU
+  tracer implements them. Fog quality lives in `NuxTSettings` (and project settings).
+- The tracer tone maps with `x / (1 + x)` before sRGB encoding, so a radiance of 1
+  reads as byte 188. Graphics tests that check graph or fog output should invert both
+  (see `NuxTShaderGraphGraphics`). `new NuxTSettings()` zeroes every field; use named
+  arguments such as `new NuxTSettings(Samples: 32)` to get the declared defaults.
+- The renderer choice is an app preference (`UseNuxTRenderer` in `preferences.json`),
+  not a project setting. `Viewport.SetNuxTRenderer` saves it, so tests must set
+  `Viewport.UseNuxTRenderer` instead to avoid writing the developer's real preferences.
+  Startup reads it before the window exists unless `--renderer=` is passed.
 
 Shader graph nodes are described by `ShaderGraph.Spec`; their numeric kinds are
 saved in projects and match the instruction codes in `shader_graph.glsl`. Add

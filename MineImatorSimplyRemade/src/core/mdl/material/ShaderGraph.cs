@@ -13,7 +13,8 @@ public enum ShaderNodeKind
     Gradient = 20, Magic = 21, Brick = 22, WhiteNoise = 23, ImageTexture = 24,
     Invert = 25, HueSaturation = 26, BrightContrast = 27, Gamma = 28, RgbToBw = 29,
     Math = 30, VectorMath = 31, MapRange = 32, Clamp = 33, SeparateXyz = 34, CombineXyz = 35,
-    SeparateColor = 36, CombineColor = 37, VectorRotate = 38, Blackbody = 39
+    SeparateColor = 36, CombineColor = 37, VectorRotate = 38, Blackbody = 39,
+    FogVolumeOutput = 40, Path = 41
 }
 
 public enum ShaderSocketType { Float, Color, Vector }
@@ -21,14 +22,19 @@ public enum ShaderSocketType { Float, Color, Vector }
 /// <summary>Implicit value used by an unlinked vector input instead of a constant.</summary>
 public enum ShaderAutoInput { None, Position, UV }
 
+/// <summary><see cref="Percent"/> floats are stored as 0..1 and shown as 0..100%.</summary>
 public sealed record ShaderSocket(string Name, ShaderSocketType Type, float X = 0, float Y = 0, float Z = 0,
-    float Min = -1024, float Max = 1024, ShaderAutoInput Auto = ShaderAutoInput.None);
+    float Min = -1024, float Max = 1024, ShaderAutoInput Auto = ShaderAutoInput.None, bool Percent = false);
 
 public sealed record ShaderOutputSocket(string Name, ShaderSocketType Type);
 
 public sealed record ShaderNodeChoice(string Label, string[] Values, int Default = 0);
 
-public sealed record ShaderNodeParameter(string Name, float Default, float Min, float Max);
+public sealed record ShaderNodeParameter(string Name, float Default, float Min, float Max)
+{
+    /// <summary>Stored as 0..1 and shown as 0..100%.</summary>
+    public bool Percent { get; init; }
+}
 
 /// <summary>Static description of a node kind: its sockets, dropdowns and parameters.</summary>
 public sealed record ShaderNodeSpec(string Label, string Category, ShaderSocket[] Inputs, ShaderOutputSocket[] Outputs)
@@ -56,18 +62,21 @@ public sealed record ShaderNode(int Id, ShaderNodeKind Kind, float X, float Y,
     public bool Clamp { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public ImmutableArray<float> Defaults { get; init; }
+    /// <summary>Scene object id a Path node follows; empty until a path is chosen.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Target { get; init; }
 
     public bool Equals(ShaderNode? other) => other is not null && Id == other.Id && Kind == other.Kind &&
         X.Equals(other.X) && Y.Equals(other.Y) && A.Equals(other.A) && B.Equals(other.B) &&
         C.Equals(other.C) && D.Equals(other.D) && Mode == other.Mode && Option == other.Option &&
-        Variant == other.Variant && Clamp == other.Clamp &&
+        Variant == other.Variant && Clamp == other.Clamp && string.Equals(Target, other.Target, StringComparison.Ordinal) &&
         Defaults.AsSpan().SequenceEqual(other.Defaults.AsSpan());
 
     public override int GetHashCode()
     {
         var hash = new HashCode();
         hash.Add(Id); hash.Add(Kind); hash.Add(X); hash.Add(Y); hash.Add(A); hash.Add(B); hash.Add(C); hash.Add(D);
-        hash.Add(Mode); hash.Add(Option); hash.Add(Variant); hash.Add(Clamp);
+        hash.Add(Mode); hash.Add(Option); hash.Add(Variant); hash.Add(Clamp); hash.Add(Target);
         foreach (float value in Defaults.AsSpan()) hash.Add(value);
         return hash.ToHashCode();
     }
@@ -80,6 +89,8 @@ public sealed record ShaderGraph
 {
     public const int MaxNodes = 64;
     public const int MaxLinks = MaxNodes * 4;
+    /// <summary>Distinct paths one graph can follow; each Path node picks one of them.</summary>
+    public const int MaxPaths = 4;
     internal const int MaxRegisters = 64, MaxDataTexels = 1024;
 
     public bool Enabled { get; init; }
@@ -116,6 +127,8 @@ public sealed record ShaderGraph
         new(name, ShaderSocketType.Float, value, value, value, min, max);
     private static ShaderSocket Rgb(string name, float r, float g, float b) => new(name, ShaderSocketType.Color, r, g, b, 0, 1024);
     private static ShaderSocket Vec(string name, float x = 0, float y = 0, float z = 0) => new(name, ShaderSocketType.Vector, x, y, z);
+    private static ShaderSocket Pct(string name, float value) =>
+        new(name, ShaderSocketType.Float, value, value, value, 0, 1, Percent: true);
     private static ShaderSocket AutoVector(ShaderAutoInput auto = ShaderAutoInput.Position) =>
         new("Vector", ShaderSocketType.Vector, Auto: auto);
     private static ShaderOutputSocket OutF(string name) => new(name, ShaderSocketType.Float);
@@ -134,6 +147,23 @@ public sealed record ShaderGraph
             F("Bump Strength", 1, 0, 16), F("Refraction Depth", 0.2f, 0, 16)
         ], []),
 
+        // Turns the object into a fog volume. Voxel Size, Randomness and Top Cutoff are plain settings because the
+        // sample position is snapped to the voxel grid before the rest of the graph runs.
+        [ShaderNodeKind.FogVolumeOutput] = new("Fog Volume Output", "Output",
+        [
+            Rgb("Color", 1, 1, 1), Rgb("Extinction Color", 0, 0, 0), Pct("Density", 0.25f),
+            F("Scattering", 1, 0, 16), F("Absorption", 0, 0, 16), F("Anisotropy", 0, -0.99f, 0.99f),
+            F("Edge Softness", 0.25f, 0, 16), Rgb("Emission Color", 1, 1, 1), F("Emission Strength", 0, 0, 1024),
+            Pct("Path Visibility", 1)
+        ], [])
+        {
+            Parameters =
+            [
+                new("Voxel Size", 0.5f, 0, 16), new("Voxel Size Randomness", 0, 0, 1) { Percent = true },
+                new("Top Cutoff", 1, 0, 1) { Percent = true }
+            ]
+        },
+
         // Input
         [ShaderNodeKind.Value] = new("Value", "Input", [], [OutF("Value")])
             { Parameters = [new("Value", 0.5f, -1024, 1024)] },
@@ -150,6 +180,11 @@ public sealed record ShaderGraph
         [ShaderNodeKind.Time] = new("Time", "Input", [], [OutF("Seconds"), OutF("Frame")]),
         [ShaderNodeKind.ObjectInfo] = new("Object Info", "Input", [],
             [OutV("Location"), OutC("Color"), OutF("Alpha"), OutF("Random")]),
+        // Distance to the part of the chosen path between Start and End. Evaluated by the NuxT path tracer; the
+        // viewport has no path data and treats every point as on the path.
+        [ShaderNodeKind.Path] = new("Path", "Input",
+            [F("Radius", 2, 0, 1024), F("Falloff", 1, 0, 1024), Pct("Start", 0), Pct("End", 1)],
+            [OutF("Visibility"), OutF("Distance"), OutF("Progress")]),
 
         // Texture
         [ShaderNodeKind.Noise] = new("Noise Texture", "Texture",
@@ -268,6 +303,11 @@ public sealed record ShaderGraph
 
     public static readonly string[] Categories = ["Input", "Texture", "Color", "Vector", "Converter"];
 
+    /// <summary>Output kinds; a graph has exactly one, and choosing another replaces it.</summary>
+    public static readonly ShaderNodeKind[] OutputKinds = [ShaderNodeKind.Output, ShaderNodeKind.FogVolumeOutput];
+
+    public static bool IsOutput(ShaderNodeKind kind) => kind is ShaderNodeKind.Output or ShaderNodeKind.FogVolumeOutput;
+
     public static ShaderNodeSpec Spec(ShaderNodeKind kind) => Specs[kind];
 
     public static IEnumerable<ShaderNodeKind> MenuKinds(string category) =>
@@ -286,6 +326,27 @@ public sealed record ShaderGraph
     /// <summary>Index of the named Principled output input, for presets and tests.</summary>
     public static int OutputInput(string name) => Array.FindIndex(Specs[ShaderNodeKind.Output].Inputs, s => s.Name == name);
 
+    /// <summary>Index of the named Fog Volume Output input, for presets and tests.</summary>
+    public static int FogInput(string name) => Array.FindIndex(Specs[ShaderNodeKind.FogVolumeOutput].Inputs, s => s.Name == name);
+
+    /// <summary>
+    /// Swaps the graph's output node for another kind in place. Links into the old output are dropped because
+    /// the two kinds have different sockets.
+    /// </summary>
+    public static ShaderGraph WithOutputKind(ShaderGraph graph, ShaderNodeKind kind)
+    {
+        if (!IsOutput(kind)) throw new ArgumentOutOfRangeException(nameof(kind));
+        var current = graph.Nodes.FirstOrDefault(node => IsOutput(node.Kind));
+        if (current == null)
+            return graph with { Nodes = graph.Nodes.Add(CreateNode(1, kind, 470, 80)) };
+        if (current.Kind == kind) return graph;
+        return graph with
+        {
+            Nodes = graph.Nodes.Replace(current, CreateNode(current.Id, kind, current.X, current.Y)),
+            Links = graph.Links.RemoveAll(link => link.Target == current.Id)
+        };
+    }
+
     public static ShaderNode CreateNode(int id, ShaderNodeKind kind, float x, float y)
     {
         var spec = Specs[kind];
@@ -300,6 +361,7 @@ public sealed record ShaderGraph
             ShaderNodeKind.Value => node with { A = 0.5f },
             ShaderNodeKind.Ramp => node with { A = 0, B = 1, C = 1, D = 1 },
             ShaderNodeKind.Brick => node with { A = 0.5f, B = 2 },
+            ShaderNodeKind.FogVolumeOutput => node with { A = 0.5f, B = 0, C = 1 },
             _ => node
         };
     }
@@ -380,12 +442,18 @@ public sealed record ShaderGraph
 /// (kind, mode, option, inputs | clamp &lt;&lt; 8 | variant &lt;&lt; 9), two output-register maps,
 /// (A, B, C, D) parameters and one texel per input: (source, x, y, z). A source &gt;= 0 is a register
 /// (+1024 when converted to a scalar), -1 a constant, -2 object position and -3 UV coordinates.
+/// The output block holds one texel per output input, followed for a Fog Volume Output by one texel of
+/// (voxel size, voxel size randomness, top cutoff, 0). A Path node stores its path slot in parameter A.
 /// </summary>
 internal sealed class ShaderGraphProgram
 {
-    public const int BumpLinked = 1;
+    public const int BumpLinked = 1, VolumeOutput = 2;
 
     public string? Error { get; private init; }
+    /// <summary>The output is a Fog Volume Output: the object renders as a medium, not a surface.</summary>
+    public bool Volume { get; private init; }
+    /// <summary>Scene object ids of the paths used by Path nodes; the slot is the index in this list.</summary>
+    public string[] PathTargets { get; private init; } = [];
     public float[] Data { get; private init; } = [];
     public int Count { get; private init; }
     public int OutputStart { get; private init; }
@@ -413,7 +481,7 @@ internal sealed class ShaderGraphProgram
                 !float.IsFinite(node.A) || !float.IsFinite(node.B) || !float.IsFinite(node.C) || !float.IsFinite(node.D) ||
                 node.Defaults.Any(value => !float.IsFinite(value)))
                 return Invalid("The graph contains an invalid node.");
-            if (node.Kind != ShaderNodeKind.Output) continue;
+            if (!ShaderGraph.IsOutput(node.Kind)) continue;
             if (output != null) return Invalid("Use exactly one Material Output.");
             output = node;
         }
@@ -422,7 +490,7 @@ internal sealed class ShaderGraphProgram
         var sources = new Dictionary<(int Node, int Input), ShaderLink>();
         foreach (var link in graph.Links)
         {
-            if (!nodes.TryGetValue(link.Source, out var from) || from.Kind == ShaderNodeKind.Output ||
+            if (!nodes.TryGetValue(link.Source, out var from) || ShaderGraph.IsOutput(from.Kind) ||
                 (uint)link.Output >= (uint)ShaderGraph.OutputCount(from.Kind) ||
                 !nodes.TryGetValue(link.Target, out var to) ||
                 (uint)link.Input >= (uint)ShaderGraph.InputCount(to.Kind) ||
@@ -442,7 +510,7 @@ internal sealed class ShaderGraphProgram
                     return false;
             visiting.Remove(node.Id);
             done.Add(node.Id);
-            if (emit && node.Kind != ShaderNodeKind.Output) order.Add(node);
+            if (emit && !ShaderGraph.IsOutput(node.Kind)) order.Add(node);
             return true;
         }
         // Emit only nodes that contribute to the surface, then validate any disconnected subgraphs.
@@ -482,6 +550,13 @@ internal sealed class ShaderGraphProgram
             }
         }
 
+        var pathTargets = new List<string>();
+        foreach (var node in order)
+            if (node.Kind == ShaderNodeKind.Path && !string.IsNullOrEmpty(node.Target) && !pathTargets.Contains(node.Target))
+                pathTargets.Add(node.Target);
+        if (pathTargets.Count > ShaderGraph.MaxPaths)
+            return Invalid($"A graph can follow at most {ShaderGraph.MaxPaths} different paths.");
+
         foreach (var node in order)
         {
             var spec = ShaderGraph.Spec(node.Kind);
@@ -500,13 +575,28 @@ internal sealed class ShaderGraphProgram
                 c = Math.Clamp(c, b, 1);
                 d = Math.Clamp(d, c, 1);
             }
+            else if (node.Kind == ShaderNodeKind.Path)
+                a = string.IsNullOrEmpty(node.Target) ? -1 : pathTargets.IndexOf(node.Target);
             data.AddRange([Math.Clamp(a, -1024, 1024), Math.Clamp(b, -1024, 1024),
                 Math.Clamp(c, -1024, 1024), Math.Clamp(d, -1024, 1024)]);
             Inputs(node);
         }
         int outputStart = data.Count / 4;
         Inputs(output);
+        bool volume = output.Kind == ShaderNodeKind.FogVolumeOutput;
+        if (volume)
+            data.AddRange([Math.Clamp(output.A, 0, 16), Math.Clamp(output.B, 0, 1), Math.Clamp(output.C, 0, 1), 0]);
         if (data.Count / 4 > ShaderGraph.MaxDataTexels) return Invalid("The graph is too complex to render.");
+        if (volume)
+        {
+            data[1] = outputStart;
+            data[2] = VolumeOutput;
+            return new()
+            {
+                Data = data.ToArray(), Count = order.Count, OutputStart = outputStart, Flags = VolumeOutput,
+                Translucent = true, Volume = true, PathTargets = [..pathTargets]
+            };
+        }
 
         bool Linked(string name) => sources.ContainsKey((output.Id, ShaderGraph.OutputInput(name)));
         float Value(string name) => output.Defaults[ShaderGraph.OutputInput(name) * 3];
@@ -517,7 +607,8 @@ internal sealed class ShaderGraphProgram
         return new()
         {
             Data = data.ToArray(), Count = order.Count, OutputStart = outputStart, Flags = flags,
-            Transmissive = transmissive, Translucent = transmissive || Linked("Alpha") || Value("Alpha") < 1
+            Transmissive = transmissive, Translucent = transmissive || Linked("Alpha") || Value("Alpha") < 1,
+            PathTargets = [..pathTargets]
         };
     }
 }
@@ -532,6 +623,25 @@ public static class ShaderGraphPresets
         ShaderGraphPreset.LavaFlow => "Lava Flow",
         _ => preset.ToString()
     };
+
+    /// <summary>
+    /// A starter fog volume: noise drives the density, so the medium shows patchy voxel clouds. It is kept out
+    /// of <see cref="ShaderGraphPreset"/> because those presets are surface looks that preview on a sphere.
+    /// </summary>
+    public static ShaderGraph CreateFogVolume()
+    {
+        var output = ShaderGraph.CreateNode(1, ShaderNodeKind.FogVolumeOutput, 700, 75);
+        var noise = ShaderGraph.WithInputValue(ShaderGraph.WithInputValue(
+            ShaderGraph.CreateNode(2, ShaderNodeKind.Noise, 225, 60), "Scale", 0.6f), "Detail", 3f);
+        var remap = ShaderGraph.WithInputValue(ShaderGraph.WithInputValue(ShaderGraph.WithInputValue(
+            ShaderGraph.CreateNode(3, ShaderNodeKind.MapRange, 460, 80), "From Min", 0.3f), "From Max", 0.8f), "To Max", 0.8f);
+        return new()
+        {
+            Enabled = true,
+            Nodes = [output, noise, remap],
+            Links = [new(2, 3, 0), new(3, 1, ShaderGraph.FogInput("Density"))]
+        };
+    }
 
     public static ShaderGraph Create(ShaderGraphPreset preset)
     {

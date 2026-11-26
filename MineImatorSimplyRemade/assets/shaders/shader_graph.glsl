@@ -1,15 +1,38 @@
 // Interpreter for ShaderGraphProgram data. See ShaderGraph.cs for the RGBA32F texel layout.
-// Included after the material uniforms of simple.frag (uTexture, uAlbedo, uAlpha, uCameraPosition).
+// simple.frag includes it after its material uniforms (uTexture, uAlbedo, uAlpha, uCameraPosition).
+// nuxt.comp defines GRAPH_COMPUTE first and includes it after SampleTexture and the camera uniforms: there
+// each graph owns one row of uShaderGraphData and the per-material state below is set per hit.
+#ifndef GRAPH_COMPUTE
 uniform int uShaderGraphEnabled, uShaderGraphCount, uShaderGraphOutputStart, uShaderGraphFlags;
 uniform sampler2D uShaderGraphData;
 uniform float uShaderGraphFrame;
 uniform mat4 uModel;
 uniform mat4 uShaderGraphView, uShaderGraphViewProj;
 uniform vec3 uShaderGraphBoundsMin, uShaderGraphBoundsSize;
+#else
+// Graph rows come first; path polylines follow in the same texture, addressed by absolute row.
+layout(binding = 15) uniform sampler2D uShaderGraphData;
+int gGraphRow = 0, gGraphCount = 0, gGraphOutputStart = 0, gGraphFlags = 0;
+float gGraphFrame = 0.0;
+ivec4 gGraphPaths = ivec4(-1);
+ivec4 gGraphTexture = ivec4(-1);
+mat4 uModel = mat4(1.0);
+vec3 uShaderGraphBoundsMin = vec3(0.0), uShaderGraphBoundsSize = vec3(1.0);
+vec3 uAlbedo = vec3(1.0);
+float uAlpha = 1.0;
+#define uShaderGraphCount gGraphCount
+#define uShaderGraphOutputStart gGraphOutputStart
+#define uShaderGraphFlags gGraphFlags
+#define uShaderGraphFrame gGraphFrame
+#endif
 
 #define GRAPH_REGISTERS 64
 #define GRAPH_PI 3.14159265359
 #define GRAPH_BUMP_LINKED 1
+#define GRAPH_VOLUME 2
+#define GRAPH_PATH_SAMPLES 64
+// Extinction per block of a fully dense (100%) fog volume with Scattering plus Absorption of 1.
+#define GRAPH_VOLUME_DENSITY 4.0
 
 struct NodeSurface {
     vec3 color;
@@ -31,7 +54,11 @@ vec2 gGraphUv;
 
 float graphValue(vec3 v) { return dot(v, vec3(0.2126, 0.7152, 0.0722)); }
 
+#ifdef GRAPH_COMPUTE
+vec4 graphFetch(int i) { return texelFetch(uShaderGraphData, ivec2(i, gGraphRow), 0); }
+#else
 vec4 graphFetch(int i) { return texelFetch(uShaderGraphData, ivec2(i, 0), 0); }
+#endif
 
 vec3 graphInput(int at) {
     vec4 t = graphFetch(at);
@@ -47,6 +74,77 @@ void graphStore(float reg, vec3 v) {
     int r = int(reg);
     if (r >= 0) gGraphRegs[min(r, GRAPH_REGISTERS - 1)] = clamp(v, vec3(-65536.0), vec3(65536.0));
 }
+
+// ── Host-specific inputs ─────────────────────────────────────────────────────
+
+#ifdef GRAPH_COMPUTE
+vec3 graphViewSpace(vec3 world) {
+    vec3 d = world - uCameraPosition;
+    return vec3(dot(d, uCameraRight), dot(d, uCameraUp), -dot(d, uCameraForward));
+}
+
+vec3 graphWindow(vec3 world) {
+    vec3 v = graphViewSpace(world);
+    float depth = max(-v.z, 1e-6), halfHeight = tan(uFov * 0.5), aspect = float(uWidth) / float(uHeight);
+    return vec3(v.x / (depth * halfHeight * aspect) * 0.5 + 0.5, v.y / (depth * halfHeight) * 0.5 + 0.5, 0.0);
+}
+
+vec4 graphImage(vec2 coordinate, int mode) {
+    bool outside = any(lessThan(coordinate, vec2(0.0))) || any(greaterThan(coordinate, vec2(1.0)));
+    coordinate = mode == 0 ? fract(coordinate) : clamp(coordinate, vec2(0.0), vec2(0.99999));
+    vec4 texel = gGraphTexture.x >= 0 ? SampleTexture(coordinate, gGraphTexture) : vec4(1.0, 0.0, 1.0, 1.0);
+    if (mode == 2 && outside) texel = vec4(0.0);
+    return texel;
+}
+
+// Returns (visibility, distance, progress) for the part of the path between start and end. Each path is
+// one row of GRAPH_PATH_SAMPLES points evenly spaced along its length. An unresolved path is everywhere.
+vec3 graphPath(int slot, vec3 world, float radius, float falloff, float start, float end) {
+    if (slot < 0 || slot > 3 || gGraphPaths[slot] < 0) return vec3(1.0, 0.0, 0.0);
+    int row = gGraphPaths[slot];
+    start = clamp(start, 0.0, 1.0);
+    end = clamp(end, 0.0, 1.0);
+    float best = 1e30, bestProgress = 0.0;
+    vec3 previous = texelFetch(uShaderGraphData, ivec2(0, row), 0).xyz;
+    for (int i = 1; i < GRAPH_PATH_SAMPLES; ++i) {
+        vec3 next = texelFetch(uShaderGraphData, ivec2(i, row), 0).xyz;
+        float s0 = float(i - 1) / float(GRAPH_PATH_SAMPLES - 1), s1 = float(i) / float(GRAPH_PATH_SAMPLES - 1);
+        float a = max(s0, start), b = min(s1, end);
+        if (a <= b) {
+            vec3 pa = mix(previous, next, (a - s0) / (s1 - s0)), pb = mix(previous, next, (b - s0) / (s1 - s0));
+            vec3 ab = pb - pa;
+            float length2 = dot(ab, ab);
+            float t = length2 > 1e-12 ? clamp(dot(world - pa, ab) / length2, 0.0, 1.0) : 0.0;
+            float d = distance(world, pa + ab * t);
+            if (d < best) { best = d; bestProgress = mix(a, b, t); }
+        }
+        previous = next;
+    }
+    float visibility = falloff > 0.0 ? 1.0 - smoothstep(radius, radius + falloff, best) : (best <= radius ? 1.0 : 0.0);
+    return vec3(visibility, min(best, 65536.0), bestProgress);
+}
+#else
+vec3 graphViewSpace(vec3 world) { return (uShaderGraphView * vec4(world, 1.0)).xyz; }
+
+vec3 graphWindow(vec3 world) {
+    vec4 clip = uShaderGraphViewProj * vec4(world, 1.0);
+    return vec3(clip.xy / max(abs(clip.w), 1e-6) * sign(clip.w) * 0.5 + 0.5, 0.0);
+}
+
+vec4 graphImage(vec2 coordinate, int mode) {
+    vec2 dx = dFdx(coordinate), dy = dFdy(coordinate);
+    bool outside = any(lessThan(coordinate, vec2(0.0))) || any(greaterThan(coordinate, vec2(1.0)));
+    coordinate = mode == 0 ? fract(coordinate) : clamp(coordinate, 0.0, 1.0);
+    vec4 texel = uUseTexture ? textureGrad(uTexture, coordinate, dx, dy) : vec4(1.0, 0.0, 1.0, 1.0);
+    if (mode == 2 && outside) texel = vec4(0.0);
+    return texel;
+}
+
+// The viewport has no path data: every point counts as on the path.
+vec3 graphPath(int slot, vec3 world, float radius, float falloff, float start, float end) {
+    return vec3(1.0, 0.0, 0.0);
+}
+#endif
 
 // ── Noise ────────────────────────────────────────────────────────────────────
 
@@ -481,9 +579,10 @@ float graphFresnelDielectric(float cosi, float eta) {
 #define IN(k) graphInput(at + (k))
 #define INF(k) graphInput(at + (k)).x
 
-// normal faces the viewer; incoming points from the surface towards the camera.
-NodeSurface evaluateShaderGraph(vec3 position, vec2 uv, vec3 world, vec3 normal, vec3 incoming,
-                                bool backfacing, float time) {
+// normal faces the viewer; incoming points from the surface towards the camera. Leaves the results in the
+// registers for readShaderGraphSurface or readShaderGraphVolume.
+void runShaderGraph(vec3 position, vec2 uv, vec3 world, vec3 normal, vec3 incoming,
+                    bool backfacing, float time) {
     gGraphPosition = position;
     gGraphUv = uv;
     int pc = 1;
@@ -542,9 +641,8 @@ NodeSurface evaluateShaderGraph(vec3 position, vec2 uv, vec3 world, vec3 normal,
                 r1 = dot(objectNormal, objectNormal) > 0.0 ? normalize(objectNormal) : normal;
                 r2 = vec3(uv, 0.0);
                 r3 = position;
-                r4 = (uShaderGraphView * vec4(world, 1.0)).xyz;
-                vec4 clip = uShaderGraphViewProj * vec4(world, 1.0);
-                r5 = vec3(clip.xy / max(abs(clip.w), 1e-6) * sign(clip.w) * 0.5 + 0.5, 0.0);
+                r4 = graphViewSpace(world);
+                r5 = graphWindow(world);
                 r6 = reflect(-incoming, normal);
                 break;
             }
@@ -587,12 +685,7 @@ NodeSurface evaluateShaderGraph(vec3 position, vec2 uv, vec3 world, vec3 normal,
                 break;
             }
             case 24: {
-                vec2 coordinate = IN(0).xy;
-                vec2 dx = dFdx(coordinate), dy = dFdy(coordinate);
-                bool outside = any(lessThan(coordinate, vec2(0.0))) || any(greaterThan(coordinate, vec2(1.0)));
-                coordinate = mode == 0 ? fract(coordinate) : clamp(coordinate, 0.0, 1.0);
-                vec4 texel = uUseTexture ? textureGrad(uTexture, coordinate, dx, dy) : vec4(1.0, 0.0, 1.0, 1.0);
-                if (mode == 2 && outside) texel = vec4(0.0);
+                vec4 texel = graphImage(IN(0).xy, mode);
                 r0 = texel.rgb; r1 = vec3(texel.a);
                 break;
             }
@@ -646,10 +739,21 @@ NodeSurface evaluateShaderGraph(vec3 position, vec2 uv, vec3 world, vec3 normal,
             }
             case 38: r0 = graphVectorRotate(mode, clampResult, IN(0), IN(1), IN(2), INF(3), IN(4)); break;
             case 39: r0 = graphBlackbody(INF(0)); break;
+            case 41: {
+                vec3 query = graphPath(int(param.x), world, INF(0), INF(1), INF(2), INF(3));
+                r0 = vec3(query.x); r1 = vec3(query.y); r2 = vec3(query.z);
+                break;
+            }
         }
         graphStore(o0.x, r0); graphStore(o0.y, r1); graphStore(o0.z, r2); graphStore(o0.w, r3);
         graphStore(o1.x, r4); graphStore(o1.y, r5); graphStore(o1.z, r6);
     }
+}
+
+#undef IN
+#undef INF
+
+NodeSurface readShaderGraphSurface() {
     int o = uShaderGraphOutputStart;
     vec3 emission = clamp(graphInput(o + 3), 0.0, 16.0) * max(graphInput(o + 9).x, 0.0);
     return NodeSurface(
@@ -666,8 +770,64 @@ NodeSurface evaluateShaderGraph(vec3 position, vec2 uv, vec3 world, vec3 normal,
         max(graphInput(o + 11).x, 0.0));
 }
 
-#undef IN
-#undef INF
+// A Fog Volume Output: a participating medium instead of a surface.
+struct NodeVolume {
+    vec3 color;
+    vec3 extinctionColor;
+    float density;
+    float scattering;
+    float absorption;
+    float anisotropy;
+    float softness;
+    vec3 emission;
+    float emissionStrength;
+    float pathVisibility;
+    float voxelSize;
+    float voxelRandomness;
+    float topCutoff;
+};
+
+// Voxel size, size randomness and top cutoff are plain settings: the sample position is snapped to the
+// voxel grid before the graph runs, so they cannot come from the graph itself.
+vec3 readShaderGraphVolumeSettings() { return graphFetch(uShaderGraphOutputStart + 10).xyz; }
+
+NodeVolume readShaderGraphVolume() {
+    int o = uShaderGraphOutputStart;
+    NodeVolume v;
+    v.color = clamp(graphInput(o), 0.0, 1.0);
+    v.extinctionColor = clamp(graphInput(o + 1), 0.0, 1.0);
+    v.density = clamp(graphInput(o + 2).x, 0.0, 1.0);
+    v.scattering = clamp(graphInput(o + 3).x, 0.0, 16.0);
+    v.absorption = clamp(graphInput(o + 4).x, 0.0, 16.0);
+    v.anisotropy = clamp(graphInput(o + 5).x, -0.99, 0.99);
+    v.softness = clamp(graphInput(o + 6).x, 0.0, 16.0);
+    v.emission = clamp(graphInput(o + 7), 0.0, 16.0);
+    v.emissionStrength = clamp(graphInput(o + 8).x, 0.0, 1024.0);
+    v.pathVisibility = clamp(graphInput(o + 9).x, 0.0, 1.0);
+    vec3 settings = readShaderGraphVolumeSettings();
+    v.voxelSize = settings.x;
+    v.voxelRandomness = settings.y;
+    v.topCutoff = settings.z;
+    return v;
+}
+
+#ifndef GRAPH_COMPUTE
+// The viewport cannot march rays: a fog volume draws as a translucent shell. Opacity assumes half a block of
+// medium, so the NuxT path tracer is needed for the real look.
+NodeSurface graphVolumePreview(NodeVolume v) {
+    float optical = v.density * (v.scattering + v.absorption) * GRAPH_VOLUME_DENSITY * 0.5;
+    float alpha = (1.0 - exp(-optical)) * v.pathVisibility;
+    vec3 emission = clamp(v.emission * v.emissionStrength * v.density, 0.0, 1024.0);
+    return NodeSurface(v.color, 1.0, 0.0, emission, 0.0, alpha, 1.0, 0.0, 0.0, 0.0, 0.0);
+}
+
+NodeSurface evaluateShaderGraph(vec3 position, vec2 uv, vec3 world, vec3 normal, vec3 incoming,
+                                bool backfacing, float time) {
+    runShaderGraph(position, uv, world, normal, incoming, backfacing, time);
+    if ((uShaderGraphFlags & GRAPH_VOLUME) != 0)
+        return graphVolumePreview(readShaderGraphVolume());
+    return readShaderGraphSurface();
+}
 
 vec3 graphBump(vec3 normal, vec3 position, float height) {
     vec3 dx = dFdx(position), dy = dFdy(position);
@@ -677,6 +837,8 @@ vec3 graphBump(vec3 normal, vec3 position, float height) {
     vec3 bumped = abs(determinant) * normal - 0.025 * gradient;
     return dot(bumped, bumped) > 1e-20 ? normalize(bumped) : normal;
 }
+
+#endif
 
 // IOR and Specular (IOR level) set the dielectric reflectance, as in the Principled BSDF.
 float graphDielectricF0(float ior, float specular) {

@@ -19,6 +19,8 @@ public class PreferencesPanel : UiPanel
     public int NumberOfBackupsToKeep { get; set; } = 3;
     public int BackupIntervalMinutes { get; set; } = 5;
     public bool CopyWorkCameraIntoNewCameras { get; set; } = true;
+    /// <summary>Renders the Rendered viewport mode with the NuxT path tracer; chosen in the Render settings.</summary>
+    public bool UseNuxTRenderer { get; set; }
 
     // ── Interface Preferences ──────────────────────────────────────────────────
 
@@ -572,6 +574,7 @@ public class PreferencesPanel : UiPanel
             NumberOfBackupsToKeep = Math.Max(1, NumberOfBackupsToKeep),
             BackupIntervalMinutes = Math.Max(1, BackupIntervalMinutes),
             CopyWorkCameraIntoNewCameras = CopyWorkCameraIntoNewCameras,
+            UseNuxTRenderer = UseNuxTRenderer,
             Theme = Theme,
             UiScale = UiScale,
             Accent = Accent,
@@ -594,6 +597,9 @@ public class PreferencesPanel : UiPanel
     /// </summary>
     public static void LoadLanguagePreference() => Localization.SetLanguage(LoadPreferencesState()?.Language);
 
+    /// <summary>Whether the path tracer was the saved renderer, read before the main window exists.</summary>
+    public static bool LoadRendererPreference() => LoadPreferencesState()?.UseNuxTRenderer ?? false;
+
     /// <summary>
     /// Loads preferences from disk. If no saved preferences exist, returns false
     /// and the PreferencesPanel retains its default values.
@@ -613,6 +619,7 @@ public class PreferencesPanel : UiPanel
         NumberOfBackupsToKeep = Math.Max(1, state.NumberOfBackupsToKeep);
         BackupIntervalMinutes = Math.Max(1, state.BackupIntervalMinutes);
         CopyWorkCameraIntoNewCameras = state.CopyWorkCameraIntoNewCameras;
+        UseNuxTRenderer = state.UseNuxTRenderer;
         Theme = state.Theme;
         ApplyUiScale(state.UiScale);
         Accent = state.Accent;
@@ -763,6 +770,7 @@ public class PreferencesState
     public int NumberOfBackupsToKeep { get; set; } = 3;
     public int BackupIntervalMinutes { get; set; } = 5;
     public bool CopyWorkCameraIntoNewCameras { get; set; } = true;
+    public bool UseNuxTRenderer { get; set; }
     public PreferencesPanel.ThemeMode Theme { get; set; } = PreferencesPanel.ThemeMode.Darker;
     public float UiScale { get; set; } = 1f;
     public PreferencesPanel.AccentColor Accent { get; set; } = PreferencesPanel.AccentColor.Purple;

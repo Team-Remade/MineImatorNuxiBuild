@@ -118,6 +118,10 @@ public partial class PropertiesPanel : UiPanel
     public float NuxTExposure = 1f;
     public int NuxTSeed = 1;
     public bool NuxTDenoiserEnabled;
+    public float NuxTVolumeStepSize = 0.25f;
+    public int NuxTVolumeMaxSteps = 96;
+    public int NuxTVolumeLightSamples = 4;
+    public bool NuxTVolumeShadows = true;
     public bool AmbientOcclusionEnabled = true;
     public float AmbientOcclusionRadius = 12f;
     public float AmbientOcclusionStrength = 1f;
@@ -431,6 +435,10 @@ public partial class PropertiesPanel : UiPanel
         NuxTExposure = float.IsFinite(settings.NuxTExposure) ? Math.Clamp(settings.NuxTExposure, 0.05f, 8f) : 1f;
         NuxTSeed = settings.NuxTSeed;
         NuxTDenoiserEnabled = settings.NuxTDenoiserEnabled;
+        NuxTVolumeStepSize = float.IsFinite(settings.NuxTVolumeStepSize) ? Math.Clamp(settings.NuxTVolumeStepSize, 0.02f, 2f) : 0.25f;
+        NuxTVolumeMaxSteps = Math.Clamp(settings.NuxTVolumeMaxSteps, 8, 512);
+        NuxTVolumeLightSamples = Math.Clamp(settings.NuxTVolumeLightSamples, 0, 32);
+        NuxTVolumeShadows = settings.NuxTVolumeShadows;
         AmbientOcclusionEnabled = settings.AmbientOcclusionEnabled;
         AmbientOcclusionRadius = Math.Clamp(settings.AmbientOcclusionRadius, 0f, 128f);
         AmbientOcclusionStrength = Math.Clamp(settings.AmbientOcclusionStrength, 0f, 2f);
@@ -613,6 +621,10 @@ public partial class PropertiesPanel : UiPanel
         manifest.Settings.NuxTExposure = float.IsFinite(NuxTExposure) ? Math.Clamp(NuxTExposure, 0.05f, 8f) : 1f;
         manifest.Settings.NuxTSeed = NuxTSeed;
         manifest.Settings.NuxTDenoiserEnabled = NuxTDenoiserEnabled;
+        manifest.Settings.NuxTVolumeStepSize = float.IsFinite(NuxTVolumeStepSize) ? Math.Clamp(NuxTVolumeStepSize, 0.02f, 2f) : 0.25f;
+        manifest.Settings.NuxTVolumeMaxSteps = Math.Clamp(NuxTVolumeMaxSteps, 8, 512);
+        manifest.Settings.NuxTVolumeLightSamples = Math.Clamp(NuxTVolumeLightSamples, 0, 32);
+        manifest.Settings.NuxTVolumeShadows = NuxTVolumeShadows;
         manifest.Settings.AmbientOcclusionEnabled = AmbientOcclusionEnabled;
         manifest.Settings.AmbientOcclusionRadius = Math.Clamp(AmbientOcclusionRadius, 0f, 128f);
         manifest.Settings.AmbientOcclusionStrength = Math.Clamp(AmbientOcclusionStrength, 0f, 2f);
@@ -3112,6 +3124,19 @@ public partial class PropertiesPanel : UiPanel
     {
         bool changed = false;
 
+        // The renderer is an app preference, not a project setting, so it stays the same in every project.
+        bool pathTracer = Viewport?.UseNuxTRenderer ?? false;
+        if (ImGui.BeginCombo("Renderer##appRenderer", pathTracer ? "NuxT Path Tracer" : "OpenGL"))
+        {
+            if (ImGui.Selectable("OpenGL", !pathTracer))
+                Viewport?.SetNuxTRenderer(false);
+            if (ImGui.Selectable("NuxT Path Tracer", pathTracer))
+                Viewport?.SetNuxTRenderer(true);
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Saved with your app preferences, so it applies to every project. The path tracer only replaces the Rendered viewport mode.");
+
         if (ImGui.TreeNode("NuxT Path Tracer"))
         {
             ImGui.TextWrapped("Progressive path-tracing quality and output settings. Changes restart the accumulated render.");
@@ -3129,6 +3154,24 @@ public partial class PropertiesPanel : UiPanel
             RegisterProjectPropertyContext(nameof(NuxTDenoiserEnabled));
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Filters completed NuxT samples on the CPU; intermediate samples remain noisy.");
+            ImGui.SeparatorText("Fog Volumes");
+            changed |= ImGui.SliderFloat("Step size##nuxtFog", ref NuxTVolumeStepSize, 0.02f, 2f, "%.2f blocks",
+                ImGuiSliderFlags.Logarithmic | ImGuiSliderFlags.AlwaysClamp);
+            RegisterProjectPropertyContext(nameof(NuxTVolumeStepSize), 0.02f, 2f);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Distance between samples while marching through a fog volume. Smaller steps are smoother but slower.");
+            changed |= ImGui.SliderInt("Max steps##nuxtFog", ref NuxTVolumeMaxSteps, 8, 512);
+            RegisterProjectPropertyContext(nameof(NuxTVolumeMaxSteps), 8, 512);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Most samples one ray takes through a fog volume; larger volumes use bigger steps instead.");
+            changed |= ImGui.SliderInt("Light samples##nuxtFog", ref NuxTVolumeLightSamples, 0, 32);
+            RegisterProjectPropertyContext(nameof(NuxTVolumeLightSamples), 0, 32);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Steps per pass through fog that sample a light. More samples reduce noise in lit fog; 0 lights it with ambient only.");
+            changed |= ImGui.Checkbox("Fog shadows##nuxtFog", ref NuxTVolumeShadows);
+            RegisterProjectPropertyContext(nameof(NuxTVolumeShadows));
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Fog dims the light that reaches surfaces and other fog behind it. Off ignores fog when tracing shadows.");
             ImGui.TreePop();
         }
 

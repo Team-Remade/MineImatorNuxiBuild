@@ -60,15 +60,19 @@ public static class main
 
         try
         {
-            string renderer = args.FirstOrDefault(arg => arg.StartsWith("--renderer=", StringComparison.OrdinalIgnoreCase))?
-                .Split('=', 2)[1].ToLowerInvariant() ?? "opengl";
+            string? rendererArgument = args.FirstOrDefault(arg => arg.StartsWith("--renderer=", StringComparison.OrdinalIgnoreCase))?
+                .Split('=', 2)[1].ToLowerInvariant();
+            string renderer = rendererArgument ?? "opengl";
             if (renderer is not ("opengl" or "vulkan" or "d3d11" or "nuxt"))
             {
                 Console.Error.WriteLine("Supported renderers: --renderer=opengl, --renderer=vulkan, --renderer=d3d11, --renderer=nuxt");
                 return 1;
             }
 
-            Viewport.StartWithNuxT = renderer == "nuxt";
+            // Without a --renderer flag the renderer chosen in the Render settings is restored.
+            Viewport.StartWithNuxT = rendererArgument is null
+                ? PreferencesPanel.LoadRendererPreference()
+                : renderer == "nuxt";
 
             PreferencesPanel.LoadLanguagePreference();
             NativeLibraryBootstrap.Initialize();

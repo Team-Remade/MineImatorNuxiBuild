@@ -75,13 +75,109 @@ public partial class SpawnMenu : UiPanel
         {
             var obj = spawn();
             if (obj == null) return;
-            obj.SetLocalPosition(position);
-            if (obj is CameraSceneObject camera)
-                camera.SyncCameraToTransform();
-            SelectionManager.Instance?.ClearSelection();
-            SelectionManager.Instance?.SelectObject(obj);
-            core.project.ProjectManager.Instance.SetDirty(true);
+            CompletePlacement(obj, position);
         }, existingObject);
+    }
+
+    public void SpawnSchematicWithCursor(Func<SceneObject?> spawn, SceneObject? existingObject = null)
+    {
+        if (Viewport == null) return;
+        Viewport.CancelObjectPlacement();
+        if (!_placeWithCursor)
+        {
+            spawn();
+            return;
+        }
+
+        _isOpen = false;
+        Viewport.RequestObjectPlacementWithSurface((position, normal) =>
+        {
+            var obj = spawn();
+            if (obj == null) return;
+            vec3 placement = obj.SchematicDimensions is { } dimensions
+                ? CalculateSchematicPlacementPosition(position, normal, dimensions)
+                : obj.SchematicPlacementBoundsMin is { } boundsMin && obj.SchematicPlacementBoundsMax is { } boundsMax
+                    ? CalculateSchematicPlacementPositionFromBounds(position, normal, boundsMin, boundsMax)
+                    : position;
+            CompletePlacement(obj, placement);
+        }, existingObject);
+    }
+
+    private void CompletePlacement(SceneObject obj, vec3 position)
+    {
+        obj.SetLocalPosition(position);
+        if (obj is CameraSceneObject camera)
+            camera.SyncCameraToTransform();
+        SelectionManager.Instance?.ClearSelection();
+        SelectionManager.Instance?.SelectObject(obj);
+        core.project.ProjectManager.Instance.SetDirty(true);
+    }
+
+    internal static vec3 CalculateSchematicPlacementPosition(vec3 position, vec3 surfaceNormal, vec3 size)
+    {
+        float absX = MathF.Abs(surfaceNormal.x), absY = MathF.Abs(surfaceNormal.y), absZ = MathF.Abs(surfaceNormal.z);
+        vec3 normal = absX + absY + absZ < 1e-6f
+            ? vec3.UnitY
+            : absX >= absY && absX >= absZ
+                ? new vec3(MathF.Sign(surfaceNormal.x), 0, 0)
+                : absY >= absZ
+                    ? new vec3(0, MathF.Sign(surfaceNormal.y), 0)
+                    : new vec3(0, 0, MathF.Sign(surfaceNormal.z));
+
+        float CenterX(float coordinate) => MathF.Floor(coordinate + 0.5f);
+        float CenterY(float coordinate) => MathF.Floor(coordinate) + 0.5f;
+        var blockCenter = new vec3(
+            CenterX(position.x - normal.x * 0.5f),
+            CenterY(position.y - normal.y * 0.5f),
+            CenterX(position.z - normal.z * 0.5f));
+        vec3 sourceFace = blockCenter + normal * 0.5f;
+
+        float centeredX = MathF.Floor(size.x * 0.5f) - (size.x - 1f) * 0.5f;
+        float centeredY = MathF.Ceiling(size.y * 0.5f) - 0.5f;
+        float centeredZ = MathF.Floor(size.z * 0.5f) - (size.z - 1f) * 0.5f;
+        var targetFace = new vec3(
+            normal.x > 0 ? -size.x * 0.5f : normal.x < 0 ? size.x * 0.5f : centeredX,
+            normal.y > 0 ? 0f : normal.y < 0 ? size.y : centeredY,
+            normal.z > 0 ? -size.z * 0.5f : normal.z < 0 ? size.z * 0.5f : centeredZ);
+        return sourceFace - targetFace;
+    }
+
+    internal static vec3 CalculateSchematicPlacementPositionFromBounds(vec3 position, vec3 surfaceNormal,
+        vec3 boundsMin, vec3 boundsMax)
+    {
+        float absX = MathF.Abs(surfaceNormal.x), absY = MathF.Abs(surfaceNormal.y), absZ = MathF.Abs(surfaceNormal.z);
+        vec3 normal = absX + absY + absZ < 1e-6f
+            ? vec3.UnitY
+            : absX >= absY && absX >= absZ
+                ? new vec3(MathF.Sign(surfaceNormal.x), 0, 0)
+                : absY >= absZ
+                    ? new vec3(0, MathF.Sign(surfaceNormal.y), 0)
+                    : new vec3(0, 0, MathF.Sign(surfaceNormal.z));
+
+        float CenterX(float coordinate) => MathF.Floor(coordinate + 0.5f);
+        float CenterY(float coordinate) => MathF.Floor(coordinate) + 0.5f;
+        var blockCenter = new vec3(
+            CenterX(position.x - normal.x * 0.5f),
+            CenterY(position.y - normal.y * 0.5f),
+            CenterX(position.z - normal.z * 0.5f));
+        vec3 sourceFace = blockCenter + normal * 0.5f;
+        vec3 center = (boundsMin + boundsMax) * 0.5f;
+        vec3 size = boundsMax - boundsMin;
+
+        float GridOffset(float extent, bool vertical)
+        {
+            float blocks = MathF.Round(extent);
+            if (blocks < 1f || MathF.Abs(extent - blocks) > 0.001f) return 0f;
+            return vertical
+                ? MathF.Ceiling(blocks * 0.5f) - 0.5f - blocks * 0.5f
+                : MathF.Floor(blocks * 0.5f) - (blocks - 1f) * 0.5f;
+        }
+
+        var targetFace = new vec3(
+            normal.x > 0 ? boundsMin.x : normal.x < 0 ? boundsMax.x : center.x + GridOffset(size.x, false),
+            normal.y > 0 ? boundsMin.y : normal.y < 0 ? boundsMax.y : center.y + GridOffset(size.y, true),
+            normal.z > 0 ? boundsMin.z : normal.z < 0 ? boundsMax.z : center.z + GridOffset(size.z, false));
+        return sourceFace - targetFace;
     }
 
     // Retry-prompt state for schematic loads that fail on invalid/corrupt data.
@@ -2650,7 +2746,7 @@ public partial class SpawnMenu : UiPanel
 
         string pathToSpawn = ResolveSchematicPathForProject(result.Path);
         string resourcePackId = _spawnResourcePackId;
-        SpawnWithCursor(() => SpawnSchematicFromPathInteractive(pathToSpawn, resourcePackId));
+        SpawnSchematicWithCursor(() => SpawnSchematicFromPathInteractive(pathToSpawn, resourcePackId));
     }
 
     private string ResolveSchematicPathForProject(string sourcePath)
@@ -3160,7 +3256,7 @@ public partial class SpawnMenu : UiPanel
                     _pendingSchematicRetryError = null;
                     _isOpen = false;
                     ImGui.CloseCurrentPopup();
-                    SpawnWithCursor(() => root, root);
+                    SpawnSchematicWithCursor(() => root, root);
                 }
             }
 
@@ -3495,6 +3591,7 @@ public partial class SpawnMenu : UiPanel
                 Name = fullName,
                 ObjectType = "Schematic",
                 SpawnCategory = "Scenery",
+                SchematicDimensions = new vec3(width, height, length),
                 ResourcePackId = normalizedResourcePackId,
                 SourceAssetPath = filePath,
                 Position = vec3.Zero,
@@ -4174,7 +4271,7 @@ public partial class SpawnMenu : UiPanel
             if (blockId == 8 || blockId == 9 || blockId == 10 || blockId == 11)
                 outLiquidLevels[i] = blockData;
 
-            if (blockId == 64 || blockId == 71)
+            if (blockId is 64 or 71 or >= 193 and <= 197)
             {
                 if (!TryResolveLegacyDoor(
                         blockId,
@@ -5470,6 +5567,7 @@ public partial class SpawnMenu : UiPanel
                 variantHint = LegacyStairsVariantHint(blockData);
                 return true;
             case 170: blockName = "hay_block"; return true;
+            case 171: blockName = WoolColors[blockData & 0x0F] + "_carpet"; return true;
             case 172: blockName = "terracotta"; return true;
             case 173: blockName = "coal_block"; return true;
             case 174: blockName = "packed_ice"; return true;
@@ -5573,7 +5671,16 @@ public partial class SpawnMenu : UiPanel
         out string variantHint,
         out bool isUpperHalf)
     {
-        blockName = blockId == 71 ? "iron_door" : "oak_door";
+        blockName = blockId switch
+        {
+            71 => "iron_door",
+            193 => "spruce_door",
+            194 => "birch_door",
+            195 => "jungle_door",
+            196 => "acacia_door",
+            197 => "dark_oak_door",
+            _ => "oak_door"
+        };
 
         int layerSize = width * length;
         bool isUpper = (blockData & 0x8) != 0;
@@ -5598,10 +5705,10 @@ public partial class SpawnMenu : UiPanel
 
         string facing = (lowerData & 0x3) switch
         {
-            0 => "west",
-            1 => "north",
-            2 => "east",
-            3 => "south",
+            0 => "east",
+            1 => "south",
+            2 => "west",
+            3 => "north",
             _ => "north"
         };
 
