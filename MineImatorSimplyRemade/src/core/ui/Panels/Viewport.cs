@@ -169,6 +169,8 @@ public partial class Viewport : UiPanel
     private uint _backgroundVao;
     private uint _backgroundVbo;
     private uint _backgroundTexture;
+    // Bumped whenever _backgroundTexture is replaced, so the Veldrid copy knows to re-import it.
+    private int _backgroundTextureRevision;
     private int _backgroundImageWidth;
     private int _backgroundImageHeight;
     private int _backgroundRenderMode;
@@ -181,6 +183,8 @@ public partial class Viewport : UiPanel
     private Shader? _skyShader;
     private uint _sunTexture, _moonTexture, _cloudTexture;
     private uint _environmentTexture;
+    // Bumped whenever a sun, moon, cloud or environment texture is replaced, so the Veldrid copies re-import.
+    private int _skyTextureRevision;
     private string _loadedEnvironmentPath = "";
     private string? _attemptedEnvironmentPath;
     public string SkyTextureError { get; private set; } = "";
@@ -1005,6 +1009,7 @@ public partial class Viewport : UiPanel
         SkyTextureError = "";
         if (_environmentTexture != 0) Gl.DeleteTexture(_environmentTexture);
         _environmentTexture = 0;
+        _skyTextureRevision++;
         _loadedEnvironmentPath = "";
         if (path.Length == 0) return;
         try
@@ -1076,6 +1081,7 @@ public partial class Viewport : UiPanel
             Gl.DeleteTexture(_moonTexture);
             _moonTexture = 0;
         }
+        _skyTextureRevision++;
         _loadedMoonPath = LegacyMoonTexturePath;
         return true;
     }
@@ -1083,6 +1089,7 @@ public partial class Viewport : UiPanel
     private void DeleteMoonPhaseTextures()
     {
         if (Gl == null) return;
+        _skyTextureRevision++;
         for (int i = 0; i < _moonPhaseTextures.Length; i++)
         {
             if (_moonPhaseTextures[i] != 0)
@@ -1172,6 +1179,7 @@ public partial class Viewport : UiPanel
             }
             if (texture != 0) Gl.DeleteTexture(texture);
             Gl.GenTextures(1, out texture);
+            _skyTextureRevision++;
             Gl.BindTexture(GLEnum.Texture2D, texture);
             fixed (byte* pixels = image.Data)
                 Gl.TexImage2D(GLEnum.Texture2D, 0, InternalFormat.Rgba8, (uint)image.Width, (uint)image.Height, 0, GLEnum.Rgba, GLEnum.UnsignedByte, pixels);
@@ -1454,6 +1462,7 @@ public partial class Viewport : UiPanel
             }
 
             Gl.GenTextures(1, out _backgroundTexture);
+            _backgroundTextureRevision++;
             Gl.BindTexture(GLEnum.Texture2D, _backgroundTexture);
             fixed (byte* p = flipped)
             {
@@ -1481,6 +1490,7 @@ public partial class Viewport : UiPanel
         {
             Gl.DeleteTexture(_backgroundTexture);
             _backgroundTexture = 0;
+            _backgroundTextureRevision++;
         }
 
         _backgroundImageWidth = 0;
@@ -2816,14 +2826,17 @@ public partial class Viewport : UiPanel
             ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         ImGui.PopStyleVar();
 
-        bool graphFallback = VeldridContext.SceneRenderer != null && SceneObjects.Any(UsesShaderGraph);
+        // The active camera decides which camera effects run, so resolve it before choosing the scene renderer.
+        var (activeCamera, activeCamObj) = GetActiveRenderCamera();
+        string? openGlSceneReason = VeldridContext.SceneRenderer == null ? null : GetVeldridFallbackReason(activeCamObj);
+        bool graphFallback = openGlSceneReason != null;
         if (graphFallback)
-            UiText.Disabled("OpenGL scene | Custom shader materials");
+            UiText.Disabled($"OpenGL scene | {openGlSceneReason}");
         else if (VeldridContext.SceneRenderer != null)
         {
             UiText.Disabled($"Experimental {VeldridContext.GraphicsDevice!.BackendType} scene | OpenGL UI and editor overlays");
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Directional, point and spot lighting plus fog use Veldrid. Shadows, advanced lighting/effects, camera previews and exports still use OpenGL. GPU readback displays this viewport.");
+                ImGui.SetTooltip("Veldrid draws the sky, background image, directional, point and spot lighting, fog and these camera effects: colour management and correction, vignette, chromatic aberration, distort, heat distort, anti-aliasing, film grain, pixelate and cinematic bars. Shadows, ambient occlusion, indirect lighting and glow are not drawn in this mode. Outline, bloom, depth of field and lens dirt switch the frame to the OpenGL scene. Camera previews and exports use OpenGL. GPU readback displays this viewport.");
         }
 
         var size = ImGui.GetContentRegionAvail();
@@ -2842,9 +2855,8 @@ public partial class Viewport : UiPanel
         var imageMin  = ImGui.GetCursorScreenPos();
         var imageSize = size;
 
-        // Use the active camera (work camera or a spawned camera) for both
-        // input and rendering so controls always affect what is being viewed.
-        var (activeCamera, activeCamObj) = GetActiveRenderCamera();
+        // The active camera (work camera or a spawned camera) drives both input and
+        // rendering so controls always affect what is being viewed.
         EnsureColorManagementTargets(false, w, h, ResolveColorManagementSettings(PropertiesPanel, activeCamObj).Enabled &&
             _viewportRenderMode == ViewportRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined);
 
@@ -3571,6 +3583,160 @@ public partial class Viewport : UiPanel
         obj.Visuals.Any(mesh => mesh.CustomShader is { Enabled: true, ValidationError: null }) ||
         obj.GetChildrenObjects().Any(UsesShaderGraph);
 
+    /// <summary>
+    /// Why the main viewport must draw this frame with OpenGL instead of Veldrid, or null when Veldrid can render it.
+    /// Anything listed here has no Veldrid implementation yet; falling back keeps the picture correct instead of
+    /// silently dropping the feature.
+    /// </summary>
+    private string? GetVeldridFallbackReason(CameraSceneObject? camera)
+    {
+        if (SceneObjects.Any(UsesShaderGraph)) return "Custom shader materials";
+        if (_viewportRenderMode == ViewportRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined &&
+            camera?.Effects.FirstOrDefault(effect => effect.Enabled && effect.Type is CameraEffectType.Outline or
+                CameraEffectType.DepthOfField or CameraEffectType.Bloom or CameraEffectType.LensDirt) is { } unsupported)
+            return $"{unsupported.Type} camera effect";
+        return null;
+    }
+
+    /// <summary>
+    /// Draws the sky and then the background image into the Veldrid scene before any geometry. Both follow the same
+    /// conditions and settings as <c>RenderSky</c> and <c>RenderBackgroundPlane</c>; neither touches the depth buffer.
+    /// </summary>
+    private void DrawVeldridBackdrop(VeldridSceneRenderer renderer, VeldridPostProcessor processor, Camera camera,
+        (vec3 Sun, vec3 Moon, vec3 Fog) environment, uint width, uint height)
+    {
+        var p = PropertiesPanel;
+        if (p == null || p.TransparentBackground) return;
+        var nearest = processor.GetSampler(Veldrid.SamplerFilter.MinPoint_MagPoint_MipPoint,
+            Veldrid.SamplerAddressMode.Clamp, Veldrid.SamplerAddressMode.Clamp);
+
+        if (p.UseSky)
+        {
+            ReloadSkyTextures();
+            bool texturedSky = p.SkyMode is "sphere" or "box";
+            if (!texturedSky || _environmentTexture != 0)
+            {
+                mat4 cameraWorld = camera.GetViewMatrix().Inverse;
+                vec3 forward = (cameraWorld * new vec4(0f, 0f, -1f, 0f)).xyz.Normalized;
+                vec3 right = (cameraWorld * new vec4(1f, 0f, 0f, 0f)).xyz.Normalized;
+                vec3 up = (cameraWorld * new vec4(0f, 1f, 0f, 0f)).xyz.Normalized;
+                static vec3 Color(float[] value) => new(value[0], value[1], value[2]);
+                float animationSeconds = (Timeline.Instance?.CurrentFrame ?? 0) / (float)Math.Max(1, p.GetFramerate());
+                var sky = processor.GetPass("sky.frag", "sky.vert", VeldridPostProcessor.QuadPositionLayout);
+                sky.Set("uSkyMode", p.SkyMode == "sphere" ? 1 : p.SkyMode == "box" ? 2 : 0);
+                sky.Set("uSkyboxMapped", p.SkyboxMapped);
+                sky.Set("uSkyRotation", Color(p.SkyRotation));
+                sky.Set("uCameraForward", forward);
+                sky.Set("uCameraRight", right);
+                sky.Set("uCameraUp", up);
+                sky.Set("uCameraPosition", camera.Position);
+                sky.Set("uTanHalfFov", MathF.Tan(camera.FovY * 0.5f));
+                sky.Set("uAspect", height > 0 ? (float)width / height : 1f);
+                sky.Set("uCameraNear", camera.Near);
+                sky.Set("uCameraFar", camera.Far);
+                sky.Set("uHorizonDay", Color(p.SkyHorizonDay));
+                sky.Set("uZenithDay", Color(p.SkyZenithDay));
+                sky.Set("uHorizonSunset", Color(p.SkyHorizonSunset));
+                sky.Set("uZenithSunset", Color(p.SkyZenithSunset));
+                sky.Set("uHorizonNight", Color(p.SkyHorizonNight));
+                sky.Set("uZenithNight", Color(p.SkyZenithNight));
+                sky.Set("uCloudColor", Color(p.CloudColor));
+                sky.Set("uNightCloudColor", Color(p.NightCloudColor));
+                sky.Set("uCloudMode", !p.CloudsVisible ? -1 : p.CloudRenderMode == "story" ? 1 : p.CloudRenderMode == "flat" ? 2 : 0);
+                sky.Set("uCloudOffset", new vec2(p.CloudOffset[0] + p.CloudSpeed * animationSeconds, p.CloudOffset[1]));
+                sky.Set("uCloudHeight", p.CloudHeight);
+                sky.Set("uCloudBlockSize", p.CloudBlockSize);
+                sky.Set("uCloudThickness", p.CloudThickness);
+                sky.Set("uSunDirection", environment.Sun);
+                sky.Set("uMoonDirection", environment.Moon);
+                sky.Set("uSunSize", p.SunSize);
+                sky.Set("uMoonSize", p.MoonSize);
+                sky.Set("uMoonPhase", p.MoonPhase);
+                sky.Set("uMoonAtlasEnabled", _moonTextureIsAtlas);
+                sky.Set("uTwilight", p.Twilight);
+                sky.Set("uShowStars", p.ShowStars);
+                sky.Set("uStarDensity", p.StarDensity);
+                sky.Set("uStarBrightness", p.StarBrightness);
+                sky.Set("uStarTwinkleSpeed", p.StarTwinkleSpeed);
+                sky.Set("uStarColor", Color(p.StarColor));
+                sky.Set("uTime", animationSeconds);
+                sky.Set("uFogEnabled", p.FogEnabled && p.SkyFog);
+                sky.Set("uFogColor", environment.Fog);
+                sky.Set("uCloudFogEnabled", p.FogEnabled);
+                sky.Set("uObjectFogColor", Mesh.FogColor);
+                sky.Set("uFogDistance", Mesh.FogDistance);
+                sky.Set("uFogFadeSize", Mesh.FogFadeSize);
+                uint moonTexture = GetMoonTextureForPhase(p.MoonPhase);
+                sky.SetTexture("uSunTex", renderer.ImportPersistentTexture("sky.sun", _sunTexture, _skyTextureRevision).TextureView, nearest);
+                sky.SetTexture("uMoonTex", renderer.ImportPersistentTexture($"sky.moon.{moonTexture}", moonTexture, _skyTextureRevision).TextureView, nearest);
+                sky.SetTexture("uCloudTex", renderer.ImportPersistentTexture("sky.cloud", _cloudTexture, _skyTextureRevision).TextureView,
+                    processor.GetSampler(Veldrid.SamplerFilter.MinPoint_MagPoint_MipPoint,
+                        Veldrid.SamplerAddressMode.Wrap, Veldrid.SamplerAddressMode.Wrap));
+                sky.SetTexture("uEnvironmentTex", renderer.ImportPersistentTexture("sky.environment", _environmentTexture, _skyTextureRevision).TextureView,
+                    processor.GetSampler(Veldrid.SamplerFilter.MinLinear_MagLinear_MipPoint,
+                        p.SkyMode == "sphere" ? Veldrid.SamplerAddressMode.Wrap : Veldrid.SamplerAddressMode.Clamp,
+                        Veldrid.SamplerAddressMode.Clamp));
+                renderer.DrawBackdrop(sky, VeldridFullscreenPass.BlendMode.Opaque, processor.BackdropQuad, 6);
+            }
+        }
+
+        if (_backgroundTexture != 0)
+        {
+            var image = processor.GetPass("background.frag", "background.vert", VeldridPostProcessor.QuadPositionUvLayout);
+            image.Set("uMode", _backgroundRenderMode);
+            image.Set("uUserScale", _backgroundUserScale);
+            image.Set("uUserRotationRadians", _backgroundRotationRadians);
+            image.Set("uUserOffset", new vec2(_backgroundUserOffset.X, _backgroundUserOffset.Y));
+            image.Set("uViewportSize", new vec2(width, height));
+            image.Set("uImageSize", new vec2(_backgroundImageWidth, _backgroundImageHeight));
+            image.SetTexture("uBackgroundTex",
+                renderer.ImportPersistentTexture("background", _backgroundTexture, _backgroundTextureRevision).TextureView,
+                processor.LinearClamp);
+            renderer.DrawBackdrop(image, VeldridFullscreenPass.BlendMode.Alpha, processor.BackdropQuad, 6);
+        }
+    }
+
+    private static bool IsWatermarkActive(PropertiesPanel? settings) =>
+        settings?.WatermarkEnabled == true && !string.IsNullOrWhiteSpace(settings.WatermarkImagePath) &&
+        settings.WatermarkOpacity > 0f;
+
+    /// <summary>
+    /// Camera effects that run natively on Veldrid, in the order the OpenGL path applies them.
+    /// <paramref name="openGlTail"/> is true when the watermark (which needs an image texture) and the
+    /// cinematic bars after it must still run on OpenGL once the Veldrid image has been read back.
+    /// </summary>
+    private List<IVeldridPostEffect> BuildVeldridEffects(CameraSceneObject? camera, bool renderedCombined, bool combined,
+        out bool openGlTail)
+    {
+        var effects = new List<IVeldridPostEffect>();
+        if (TransparentBackground)
+            effects.Add(VeldridCameraEffects.AlphaResolve());
+        if (renderedCombined)
+        {
+            var colorManagement = ResolveColorManagementSettings(PropertiesPanel, camera);
+            if (VeldridCameraEffects.ColorManagement(colorManagement.Enabled, colorManagement.ToneMapper,
+                    colorManagement.Exposure, colorManagement.Gamma, colorManagement.Look) is { } toneMap)
+                effects.Add(toneMap);
+            effects.AddRange(VeldridCameraEffects.ColorCorrection(camera));
+            effects.AddRange(VeldridCameraEffects.Vignette(camera));
+            effects.AddRange(VeldridCameraEffects.ChromaticAberration(camera));
+            effects.AddRange(VeldridCameraEffects.Distort(camera));
+            effects.AddRange(VeldridCameraEffects.HeatDistort(camera, GetTimelineEffectTimeSeconds()));
+            if (PropertiesPanel is { } panel && VeldridCameraEffects.AntiAliasing(panel.AntiAliasingEnabled,
+                    panel.AntiAliasingSubpixel, panel.AntiAliasingEdgeThreshold, panel.AntiAliasingMinimumThreshold) is { } antiAliasing)
+                effects.Add(antiAliasing);
+            if (VeldridCameraEffects.FilmGrain(camera, Timeline.Instance?.CurrentFrame ?? 0) is { } grain)
+                effects.Add(grain);
+            effects.AddRange(VeldridCameraEffects.Pixelate(camera));
+        }
+        else if (combined)
+            effects.AddRange(VeldridCameraEffects.CameraMaterial(camera));
+        openGlTail = renderedCombined && IsWatermarkActive(PropertiesPanel);
+        if (!openGlTail)
+            effects.AddRange(VeldridCameraEffects.CinematicBars(camera));
+        return effects;
+    }
+
     private void RenderVeldridScene(
         VeldridSceneRenderer renderer, Camera activeCamera, CameraSceneObject? activeCamObj,
         uint width, uint height, Vector2 imageMin, Vector2 imageSize)
@@ -3582,7 +3748,7 @@ public partial class Viewport : UiPanel
         using var mainSceneScope = FrameProfiler.Shared.Measure(ProfileStage.MainScene);
         FrameProfiler.Shared.Count(ProfileCounter.MainRenderInvocations);
         Camera camera = BuildPreparedCamera(activeCamera, activeCamObj);
-        PrepareSceneEnvironment(camera);
+        var environment = PrepareSceneEnvironment(camera);
         mat4 view = camera.GetViewMatrix();
         mat4 projection = camera.GetProjectionMatrix((float)width / height);
         var frustum = Frustum.FromViewProj(projection * view);
@@ -3617,6 +3783,8 @@ public partial class Viewport : UiPanel
         renderer.BeginFrame(width, height, view, projection,
             PropertiesPanel?.TransparentBackground == true ? Vector4.Zero :
                 new Vector4(background[0], background[1], background[2], background[3]), wireframe);
+        if (VeldridContext.PostProcessor is { } backdropProcessor)
+            DrawVeldridBackdrop(renderer, backdropProcessor, camera, environment, width, height);
         if (_groundPlane != null && GroundPlaneVisible)
         {
             SelectPointLightsForMesh(vec3.Zero, _cachedAllPointLights);
@@ -3645,25 +3813,16 @@ public partial class Viewport : UiPanel
                 SelectPointLightsForMesh(new vec3(model.m30, model.m31, model.m32), _cachedAllPointLights);
                 renderer.Draw(mesh, model, true);
             }
-        renderer.EndFrame(_colorTex);
-        ResolveSceneAlpha(_fbo, _glowFbo, _glowTex, width, height);
-
-        if (renderMode == SceneRenderMode.Rendered && _renderedPassMode == RenderedPassMode.Combined)
+        bool combinedPass = _renderedPassMode == RenderedPassMode.Combined;
+        var nativeEffects = BuildVeldridEffects(activeCamObj, renderMode == SceneRenderMode.Rendered && combinedPass,
+            combinedPass, out bool openGlTail);
+        renderer.EndFrame(_colorTex, VeldridContext.PostProcessor, nativeEffects);
+        if (openGlTail)
         {
-            ApplyColorManagementPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel, activeCamObj);
-            ApplyColorCorrectionPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
-            ApplyVignettePass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
-            ApplyChromaticAberrationPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
-            ApplyDistortPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
-            ApplyHeatDistortPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
-            ApplyAntiAliasingPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
-            ApplyPixelatePass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
+            // The watermark needs an image texture; it and the bars drawn over it stay on OpenGL for now.
             ApplyWatermarkPass(_fbo, _glowFbo, _glowTex, width, height, PropertiesPanel);
+            ApplyCinematicBarsPass(_fbo, width, height, activeCamObj);
         }
-        else if (_renderedPassMode == RenderedPassMode.Combined)
-            ApplyCameraMaterialPass(_fbo, _glowFbo, _glowTex, width, height, activeCamObj);
-
-        ApplyCinematicBarsPass(_fbo, width, height, activeCamObj);
 
         // Keep editor tools usable during the scene-renderer migration. These
         // draw over the bridged colour target; scene shading above is Veldrid.

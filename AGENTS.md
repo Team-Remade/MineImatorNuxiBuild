@@ -96,6 +96,8 @@ dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --fluid
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --fluid-graphics
 dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --instancing-graphics
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --veldrid-glsl
+dotnet run --project .\MineImatorSimplyRemade\tools\NxObjectTests\NxObjectTests.csproj -- --veldrid-post-graphics
 ```
 
 Coverage and prerequisites:
@@ -167,6 +169,19 @@ Coverage and prerequisites:
   (exact pixels, merged draw/mesh counts, interleaved meshes staying in scene order, opt-in
   reordering), plus a mutation check that changes every public `Mesh` and `StandardMaterial`
   setting and requires `Mesh.CanInstanceWith` to notice it.
+- `--veldrid-glsl`: no GPU; every fullscreen, sky and background shader converts through
+  `VeldridGlslAdapter` and compiles to SPIR-V, and the std140 layout rules hold. It also runs in
+  the default suite.
+- `--veldrid-post-graphics`: OpenGL 3.3 plus Direct3D 11 and Vulkan (a backend the machine does
+  not support is skipped). Veldrid pixelate against its CPU reference; the scene renderer's
+  row order against OpenGL with a lopsided quad (centre pixels cannot catch a vertical flip);
+  every `VeldridCameraEffects` effect against the production `Viewport.Apply*Pass` on the same
+  image; and the sky (procedural, sphere, box) and background image against `RenderSky` and
+  `RenderBackgroundPlane` with injected synthetic textures. Most effects match within one level.
+  Film grain, FXAA and the star field are allowed a small fraction of outlier pixels because
+  their hashes and thresholds round differently on each API. All backends share one OpenGL
+  context, because the application caches compiled programs in statics tied to the context
+  that created them.
 - `--block-rotation-graphics`: OpenGL 3.3; button mounting/facing (including legacy
   stone and wooden buttons), trapdoors, both door halves, multipart rotations,
   and consistent geometry after conversion to animatable blocks, rebuilding,
@@ -651,17 +666,74 @@ dotnet run --project .\MineImatorSimplyRemade\MineImatorSimplyRemade.csproj -- -
 ```
 
 Direct3D 11 is Windows-only. This is an incremental migration, not a GL-free
-renderer. Veldrid renders the main viewport's geometry into an offscreen target
-and submits real GPU draw commands. Its output is read back and uploaded into
-the existing OpenGL UI. The window, asset uploads, editor overlays, camera
-previews, and exports still use OpenGL.
+renderer. Veldrid renders the main viewport (sky, background image, geometry,
+lighting, fog and the camera effects listed below) into an offscreen target and
+submits real GPU draw commands. The finished image is read back and uploaded into
+the existing OpenGL UI. The window, texture and mesh uploads, editor overlays,
+camera previews, exports and picking still use OpenGL.
 
-Advanced scene lighting and post-processing are not yet ported; editor overlays
-do not have the Veldrid scene depth buffer. The bridge incurs GPU synchronization
-and CPU-transfer overhead and is not a performance upgrade. The viewport labels
-the experimental backend, and initialization or rendering failures are logged
-before falling back to OpenGL. Verify the active backend and logs when testing;
-a successful launch alone does not prove the requested backend is working.
+What the Veldrid viewport covers:
+
+- Scene: ambient, directional, point and spot lighting, fog, wind, material colours,
+  normal and emission maps and the end portal. Shadows, ambient occlusion, indirect
+  lighting, subsurface scattering and glow are not drawn in this mode.
+- Backdrop (`Viewport.DrawVeldridBackdrop`): the procedural, sphere and box sky and the
+  background image, drawn before the geometry with `sky.frag` and `background.frag`.
+- Camera effects (`VeldridCameraEffects`, assembled by `Viewport.BuildVeldridEffects` in the
+  OpenGL order): transparent-background alpha resolve, colour management, colour correction
+  with the camera material, vignette, chromatic aberration, distort, heat distort, FXAA, film
+  grain, pixelate and cinematic bars.
+- A frame switches to the OpenGL scene, with the reason shown above the viewport, for custom
+  shader-graph materials and for the Outline, Bloom, Depth of Field and Lens Dirt effects
+  (`Viewport.GetVeldridFallbackReason`). The watermark, and the cinematic bars drawn over it,
+  still run on OpenGL after the readback.
+
+How the port works:
+
+- `VeldridGlslAdapter` rewrites the project's GLSL 3.3 sources (loose uniforms, `sampler2D`,
+  implicit locations, `gl_VertexID`) into the Vulkan GLSL that Veldrid.SPIRV compiles. Shader
+  bodies stay untouched, so one `.frag` file feeds both renderers until the OpenGL one is
+  removed. Loose uniforms become one std140 block, each sampler becomes a texture and sampler
+  pair, `bool` uniforms are stored as `uint`, uniform initializers become defaults, sampler
+  parameters of helper functions are split into texture and sampler, and identifiers that GLSL
+  4.x reserves (`sample`, `filter`, ...) are renamed. Uniform blocks, interface blocks and
+  sampler arrays are not supported yet.
+- Veldrid targets are stored in OpenGL row order (row zero is the bottom of the picture). The
+  adapter and the scene vertex shader negate clip-space Y when the device's UV origin is
+  top-left (`VeldridFullscreenPass.FlipClipY`), and the scene pipelines use the matching front
+  face, so `gl_FragCoord`, `texelFetch` and UVs behave as in OpenGL and readback needs no row
+  flip. Keep this convention for every new Veldrid target or shader.
+- `VeldridFullscreenPass` runs one adapted shader over a target (`Set("uSize", 4f)`,
+  `SetTexture("uScene", view, sampler)`), from a vertex-less triangle or from the shared backdrop
+  quad. `VeldridPostProcessor` owns the passes, samplers and the ping-pong target and runs an
+  ordered `IVeldridPostEffect` list; `VeldridSceneRenderer.EndFrame(texture, processor, effects)`
+  runs it before the readback.
+- `VeldridSceneRenderer.ImportPersistentTexture` keeps static OpenGL textures (sky, background)
+  across frames, keyed by texture id and a revision that `Viewport` bumps whenever it replaces
+  them (`_skyTextureRevision`, `_backgroundTextureRevision`). Mesh textures are still copied from
+  OpenGL every frame; moving texture ownership to Veldrid is a prerequisite for removing OpenGL.
+- Direct3D cannot compile implicit-derivative lookups (`texture()`) inside divergent loops, so
+  `sky.frag` uses `textureLod(..., 0.0)` for its mipmap-less cloud texture. Use explicit levels
+  for lookups inside loops in any shader Veldrid must run.
+
+To port another OpenGL effect: add a builder to `VeldridCameraEffects` that mirrors the OpenGL
+pass's settings, skip rules and uniforms; add a case to `VeldridEffectParity`
+(`VeldridPostParityTests.cs`) that compares it with the production pass; wire it into
+`Viewport.BuildVeldridEffects` (or remove its type from `GetVeldridFallbackReason`); and list new
+shaders in `VeldridFullscreenShaders` so the CPU compile check covers them.
+
+The next large steps are bloom, glow, lens dirt and depth of field (multi-pass and depth-based;
+the scene depth is already a sampleable `R32_Float` texture), shadows (directional and
+point-light maps plus the shadow terms in `simple.frag`) and, to retire the duplicated scene
+shader, running `simple.frag` itself through the adapter (that needs uniform block and sampler
+array support and a Veldrid writer for `Mesh`'s uniforms).
+
+The bridge incurs GPU synchronization and CPU-transfer overhead and is not a performance
+upgrade. The viewport labels the experimental backend, and initialization or rendering failures
+are logged before falling back to OpenGL. Verify the active backend and logs when testing; a
+successful launch alone does not prove the requested backend is working.
+`VeldridPostProcessPipeline`, `VeldridShadowPass` and the other unused scaffolding in
+`src/core/graphics` predate this port and are not wired in.
 
 ## Importing Mine-imator Minecraft assets
 

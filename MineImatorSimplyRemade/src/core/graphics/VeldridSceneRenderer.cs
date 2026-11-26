@@ -19,8 +19,11 @@ namespace MineImatorSimplyRemade.core.graphics;
 /// and upload the completed image; the caller owns both devices and presentation.
 /// Call on the thread with the source/destination OpenGL context current.
 /// Scene lighting includes ambient, directional, point and spot illumination, plus
-/// distance and height fog. Shadows, SSS, mipmaps and native postprocessing are
-/// not implemented.
+/// distance and height fog. Shadows, SSS and mipmaps are not implemented.
+/// Camera effects can run natively: pass a <see cref="VeldridPostProcessor"/> and an ordered
+/// effect list to <see cref="EndFrame"/>, and they execute on the finished scene before readback.
+/// The target is stored in OpenGL row order (row zero is the bottom of the picture), so
+/// OpenGL-written shaders that read <c>gl_FragCoord</c> or call <c>texelFetch</c> behave identically.
 /// Alpha-mask opacity is supported, but independent text outline colors are not.
 /// Animated spritesheets sample scene timeline time, with a renderer-local clock as fallback.
 /// </summary>
@@ -34,10 +37,12 @@ public sealed class VeldridSceneRenderer : IDisposable
     private readonly ResourceLayout _layout;
     private readonly Shader[] _shaders;
     private readonly VeldridTexture _white;
+    private readonly VeldridTexture _black;
     private readonly Sampler _pointSampler;
     private readonly Sampler _linearSampler;
     private readonly Dictionary<(bool Wire, bool Overlay, bool NoDepthWrite, FaceCullMode Cull, bool AlphaClip, MaterialBlendMode BlendMode, bool Translucent), Pipeline> _pipelines = new();
     private readonly Dictionary<uint, VeldridTexture> _textures = new();
+    private readonly Dictionary<string, (uint GlTexture, int Revision, VeldridTexture Texture)> _persistentTextures = new();
     private readonly List<IDisposable> _frameResources = new();
     private VeldridFramebuffer? _target;
     private Veldrid.Texture? _staging;
@@ -282,6 +287,7 @@ public sealed class VeldridSceneRenderer : IDisposable
                 new ShaderDescription(ShaderStages.Fragment, Encoding.UTF8.GetBytes(fragment), "main"),
                 new CrossCompileOptions());
             _white = VeldridTexture.CreateFromRgbaBytes(device, [255, 255, 255, 255], 1, 1);
+            _black = VeldridTexture.CreateFromRgbaBytes(device, [0, 0, 0, 255], 1, 1);
             var sampler = SamplerDescription.Point;
             sampler.AddressModeU = sampler.AddressModeV = sampler.AddressModeW = SamplerAddressMode.Wrap;
             _pointSampler = factory.CreateSampler(sampler);
@@ -292,6 +298,7 @@ public sealed class VeldridSceneRenderer : IDisposable
         {
             _linearSampler?.Dispose();
             _pointSampler?.Dispose();
+            _black?.Dispose();
             _white?.Dispose();
             if (_shaders != null)
                 foreach (var shader in _shaders) shader.Dispose();
@@ -400,7 +407,7 @@ public sealed class VeldridSceneRenderer : IDisposable
             LightColor = new vec4(Mesh.GlobalFillLightColor * Mesh.GlobalFillLightStrength, 0),
             LightDirection = new vec4(1, 1, 1, 0),
             Options = new vec4(forceUnshaded || mesh.Unlit ? 1 : 0,
-                _device.IsDepthRangeZeroToOne ? 1 : 0, _device.IsClipSpaceYInverted ? -1 : 1,
+                _device.IsDepthRangeZeroToOne ? 1 : 0, VeldridFullscreenPass.FlipClipY(_device) ? -1 : 1,
                 mesh.BlendMode is MaterialBlendMode.Multiply or MaterialBlendMode.Screen ? 1 : 0),
             MapOptions = new vec4(useNormalTexture ? 1 : 0, useEmissionTexture ? 1 : 0,
                 mesh.AlphaMode == MaterialAlphaMode.Clip ? 1 : 0, mesh.AlphaClipThreshold),
@@ -467,7 +474,8 @@ public sealed class VeldridSceneRenderer : IDisposable
                     ComparisonKind.Less),
                 RasterizerState = new RasterizerStateDescription(cull,
                     _wireframe ? PolygonFillMode.Wireframe : PolygonFillMode.Solid,
-                    _device.IsClipSpaceYInverted ? FrontFace.Clockwise : FrontFace.CounterClockwise, true, false),
+                    // Targets are stored bottom row first, which mirrors the rasterized picture on Direct3D/Vulkan.
+                    VeldridFullscreenPass.FlipClipY(_device) ? FrontFace.Clockwise : FrontFace.CounterClockwise, true, false),
                 PrimitiveTopology = PrimitiveTopology.TriangleList,
                 ResourceLayouts = [_layout],
                 ShaderSet = new ShaderSetDescription([VeldridVertex.LayoutDescription], _shaders),
@@ -574,6 +582,46 @@ public sealed class VeldridSceneRenderer : IDisposable
         return vertices;
     }
 
+    /// <summary>A 1x1 opaque white texture.</summary>
+    public VeldridTexture WhiteTexture => _white;
+
+    /// <summary>A 1x1 opaque black texture: what OpenGL samples from texture zero or an incomplete texture.</summary>
+    public VeldridTexture BlackTexture => _black;
+
+    /// <summary>
+    /// Imports an OpenGL texture once and keeps it across frames, for static images such as the sky and background.
+    /// The cached copy is replaced when <paramref name="glTexture"/> or <paramref name="revision"/> changes, so the
+    /// owner must bump the revision whenever it replaces the texture's pixels. Texture zero yields <see cref="BlackTexture"/>,
+    /// matching what OpenGL samples from an unbound texture.
+    /// </summary>
+    public VeldridTexture ImportPersistentTexture(string slot, uint glTexture, int revision)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (glTexture == 0) return _black;
+        if (_persistentTextures.TryGetValue(slot, out var cached))
+        {
+            if (cached.GlTexture == glTexture && cached.Revision == revision) return cached.Texture;
+            cached.Texture.Dispose();
+            _persistentTextures.Remove(slot);
+        }
+        var (pixels, width, height) = TransferGlTexture(glTexture, true, 0, 0, null);
+        var texture = VeldridTexture.CreateFromRgbaBytes(_device, pixels, width, height);
+        _persistentTextures[slot] = (glTexture, revision, texture);
+        return texture;
+    }
+
+    /// <summary>
+    /// Draws a full-target pass into the scene image ahead of any geometry (sky, background image). Depth is untouched,
+    /// so the scene draws over the result exactly as it does over the OpenGL backdrop.
+    /// </summary>
+    public void DrawBackdrop(VeldridFullscreenPass pass, VeldridFullscreenPass.BlendMode blend, DeviceBuffer vertexBuffer, uint vertexCount)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_recording) throw new InvalidOperationException("BeginFrame must be called before DrawBackdrop.");
+        pass.Draw(_commands, _target!.Framebuffer, blend, vertexBuffer, vertexCount);
+        _hasDraws = true;
+    }
+
     private VeldridTexture ImportTexture(uint id)
     {
         if (id == 0) return _white;
@@ -585,10 +633,20 @@ public sealed class VeldridSceneRenderer : IDisposable
         return texture;
     }
 
-    public void EndFrame(uint destinationGlTexture)
+    /// <summary>
+    /// Finishes the frame, runs optional camera effects natively and copies the result into an existing
+    /// OpenGL texture of the same size.
+    /// </summary>
+    /// <param name="destinationGlTexture">OpenGL texture that receives the final image.</param>
+    /// <param name="postProcessor">Owner of the effect passes; required when <paramref name="effects"/> is not empty.</param>
+    /// <param name="effects">Effects applied in order to the finished scene.</param>
+    public void EndFrame(uint destinationGlTexture, VeldridPostProcessor? postProcessor = null,
+        IReadOnlyList<IVeldridPostEffect>? effects = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_recording) throw new InvalidOperationException("BeginFrame must be called before EndFrame.");
+        if (effects is { Count: > 0 } && postProcessor == null)
+            throw new ArgumentException("A post processor is required to run effects.", nameof(postProcessor));
         try
         {
             if (!_hasDraws)
@@ -600,7 +658,8 @@ public sealed class VeldridSceneRenderer : IDisposable
                 clearMesh.Vertices.Add(vec3.Zero);
                 Draw(clearMesh, mat4.Identity, forceUnshaded: true);
             }
-            _commands.CopyTexture(_target!.ColorTexture, _staging!);
+            var final = effects is { Count: > 0 } ? postProcessor!.Run(_commands, _target!, effects) : _target!;
+            _commands.CopyTexture(final.ColorTexture, _staging!);
             _commands.End();
             _recording = false;
             _device.SubmitCommands(_commands);
@@ -608,14 +667,14 @@ public sealed class VeldridSceneRenderer : IDisposable
             var mapped = _device.Map(_staging!, MapMode.Read);
             try
             {
-                int rowBytes = checked((int)_target.Width * 4);
-                for (uint y = 0; y < _target.Height; y++)
-                {
-                    // Existing GL viewport consumers expect row zero at the bottom.
-                    uint sourceY = _device.IsUvOriginTopLeft ? _target.Height - 1 - y : y;
-                    Marshal.Copy(IntPtr.Add(mapped.Data, checked((int)(sourceY * mapped.RowPitch))),
-                        _pixels, checked((int)y * rowBytes), rowBytes);
-                }
+                // The target is already stored in OpenGL row order (row zero at the bottom).
+                int rowBytes = checked((int)_target!.Width * 4);
+                if (mapped.RowPitch == rowBytes)
+                    Marshal.Copy(mapped.Data, _pixels, 0, _pixels.Length);
+                else
+                    for (uint y = 0; y < _target.Height; y++)
+                        Marshal.Copy(IntPtr.Add(mapped.Data, checked((int)(y * mapped.RowPitch))),
+                            _pixels, checked((int)y * rowBytes), rowBytes);
             }
             finally { _device.Unmap(_staging!); }
             TransferGlTexture(destinationGlTexture, false, _target.Width, _target.Height, _pixels);
@@ -624,6 +683,7 @@ public sealed class VeldridSceneRenderer : IDisposable
         {
             // Wait before disposing even if submission/map/upload failed.
             _device.WaitForIdle();
+            postProcessor?.ReleaseFrame();
             ReleaseFrame();
         }
     }
@@ -686,8 +746,11 @@ public sealed class VeldridSceneRenderer : IDisposable
         _commands.Dispose();
         ReleaseFrame();
         foreach (var pipeline in _pipelines.Values) pipeline.Dispose();
+        foreach (var persistent in _persistentTextures.Values) persistent.Texture.Dispose();
+        _persistentTextures.Clear();
         foreach (var shader in _shaders) shader.Dispose();
         _layout.Dispose();
+        _black.Dispose();
         _white.Dispose();
         _pointSampler.Dispose();
         _linearSampler.Dispose();

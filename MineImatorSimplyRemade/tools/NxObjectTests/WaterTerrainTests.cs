@@ -229,7 +229,7 @@ internal static partial class Program
                 using var preview = new PreviewRenderer(gl, 64) { AutoRotateSpeed = 0 };
                 const BindingFlags instanceFlags = BindingFlags.Instance | BindingFlags.NonPublic;
                 var render = typeof(Viewport).GetMethod("RenderDepthOrdered", instanceFlags)!;
-                var lights = new List<(vec3, vec3, float, float, int, vec3, float, float, float)>();
+                var lights = new List<(vec3, vec3, float, float, int, vec3, float, float, float, float, bool)>();
                 byte[] Read(uint texture)
                 {
                     byte[] pixels = new byte[64 * 64 * 4];

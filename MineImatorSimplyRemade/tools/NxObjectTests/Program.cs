@@ -745,7 +745,8 @@ internal static partial class Program
             ("World importer asynchronous preview scheduling, cancellation and errors", WorldPreviewScheduling),
             ("World importer player position from legacy and 26.1+ Java saves", WorldPlayerPositionReading),
             ("World importer large selection limits, filtering and schematic roundtrip", WorldLargeSelection),
-            ("World importer default block states for 26.1+ bare palette entries", WorldDefaultBlockStates)
+            ("World importer default block states for 26.1+ bare palette entries", WorldDefaultBlockStates),
+            ("Veldrid GLSL adapter converts and compiles every fullscreen post-process shader", VeldridGlslAdapterCompile)
         ];
         if (args.Contains("--ik", StringComparer.Ordinal))
             tests = tests.Where(test => test.Name.StartsWith("IK ", StringComparison.Ordinal)).ToArray();
@@ -918,6 +919,10 @@ internal static partial class Program
             tests = tests.Where(test => test.Name.StartsWith("Item options", StringComparison.Ordinal)).ToArray();
         if (args.Contains("--items-graphics", StringComparer.Ordinal))
             tests = [("Item options spawned settings, live 3D geometry, duplication and undo", ItemOptionsGraphics)];
+        if (args.Contains("--veldrid-glsl", StringComparer.Ordinal))
+            tests = tests.Where(test => test.Name.StartsWith("Veldrid GLSL", StringComparison.Ordinal)).ToArray();
+        if (args.Contains("--veldrid-post-graphics", StringComparer.Ordinal))
+            tests = [("Veldrid post-process effects match their OpenGL references pixel for pixel", VeldridPostGraphics)];
         int miBenchmark = Array.IndexOf(args, "--mi-benchmark-project");
         if (miBenchmark >= 0)
         {

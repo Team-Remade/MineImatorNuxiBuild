@@ -65,7 +65,9 @@ vec4 raycastClouds(vec3 ray, float night, out float hitDistance)
         float planeDistance = (bottom - cameraPixels.y) / ray.y;
         if (planeDistance <= 0.0) return vec4(0.0);
         vec3 world = cameraPixels + ray * planeDistance;
-        vec4 texel = texture(uCloudTex, (world.xz + uCloudOffset) / textureSpan);
+        // Explicit level zero: the cloud texture has no mipmaps, so this matches texture() exactly, and Direct3D
+        // cannot compile implicit-derivative lookups inside the divergent march loop below.
+        vec4 texel = textureLod(uCloudTex, (world.xz + uCloudOffset) / textureSpan, 0.0);
         float fade = 1.0 - smoothstep(11520.0, 26880.0, planeDistance);
         hitDistance = planeDistance;
         return vec4(cloudColorBlend * texel.rgb * mix(0.28, 1.0, 1.0 - night), texel.a * fade);
@@ -85,14 +87,14 @@ vec4 raycastClouds(vec3 ray, float night, out float hitDistance)
         if (distanceAlongRay > leave) break;
         vec3 world = cameraPixels + ray * distanceAlongRay;
         vec2 uv = (world.xz + uCloudOffset) / textureSpan;
-        vec4 texel = texture(uCloudTex, uv);
+        vec4 texel = textureLod(uCloudTex, uv, 0.0);
         float mask = step(0.1, texel.a);
         if (mask > 0.5 && previousMask < 0.5)
         {
-            float left = texture(uCloudTex, uv - vec2(cellSize / textureSpan, 0)).a;
-            float right = texture(uCloudTex, uv + vec2(cellSize / textureSpan, 0)).a;
-            float back = texture(uCloudTex, uv - vec2(0, cellSize / textureSpan)).a;
-            float front = texture(uCloudTex, uv + vec2(0, cellSize / textureSpan)).a;
+            float left = textureLod(uCloudTex, uv - vec2(cellSize / textureSpan, 0), 0.0).a;
+            float right = textureLod(uCloudTex, uv + vec2(cellSize / textureSpan, 0), 0.0).a;
+            float back = textureLod(uCloudTex, uv - vec2(0, cellSize / textureSpan), 0.0).a;
+            float front = textureLod(uCloudTex, uv + vec2(0, cellSize / textureSpan), 0.0).a;
             vec3 normal;
             if (abs(world.y - bottom) < stepSize * abs(ray.y) + 0.08) normal = vec3(0, -1, 0);
             else if (abs(world.y - top) < stepSize * abs(ray.y) + 0.08) normal = vec3(0, 1, 0);

@@ -16,6 +16,8 @@ public static class VeldridContext
     private static bool _hasMainSwapchain;
 
     public static VeldridSceneRenderer? SceneRenderer { get; private set; }
+    /// <summary>Runs the camera effects natively on <see cref="GraphicsDevice"/> (offscreen scene path only).</summary>
+    public static VeldridPostProcessor? PostProcessor { get; private set; }
 
     public static VeldridPipelineCache? PipelineCache { get; private set; }
     public static VeldridUniformBufferPool? UniformBufferPool { get; private set; }
@@ -49,6 +51,7 @@ public static class VeldridContext
                 _ => throw new NotSupportedException($"Unsupported scene backend: {backend}")
             };
             SceneRenderer = new VeldridSceneRenderer(GraphicsDevice, gl);
+            PostProcessor = new VeldridPostProcessor(GraphicsDevice);
             Console.WriteLine($"[Veldrid] Experimental scene renderer: Backend={GraphicsDevice.BackendType}, DeviceName={GraphicsDevice.DeviceName}. UI, previews and exports remain OpenGL.");
         }
         catch
@@ -175,6 +178,8 @@ public static class VeldridContext
     public static void Dispose()
     {
         GraphicsDevice?.WaitForIdle();
+        PostProcessor?.Dispose();
+        PostProcessor = null;
         SceneRenderer?.Dispose();
         SceneRenderer = null;
         CommandRecorder?.Dispose();
